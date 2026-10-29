@@ -27,6 +27,7 @@ import {
   readWorkbookFormatSettings,
   resetWorkbookFormatSettings,
 } from "./formatSettingsStore";
+import { openShortcutManager, printShortcuts } from "./extraShortcuts";
 import { openTraceDialog } from "./traceDialogLauncher";
 import {
   applyFormulaConsistencyAction,
@@ -194,6 +195,14 @@ async function runResetFormatSettingsFromRibbon(event: Office.AddinCommands.Even
   await finish(event, () => resetWorkbookFormatSettings());
 }
 
+async function runShortcutManagerFromRibbon(event: Office.AddinCommands.Event): Promise<void> {
+  await finish(event, openShortcutManager);
+}
+
+async function runPrintShortcutsFromRibbon(event: Office.AddinCommands.Event): Promise<void> {
+  await finish(event, printShortcuts);
+}
+
 async function cycleNumberFormatShortcut(): Promise<void> {
   const settings = readWorkbookFormatSettings();
   await runCycleNumberFormatService(new ExcelPortLive(), settings.numberFormats);
@@ -239,6 +248,8 @@ Office.actions.associate("runCycleTextStyle", runCycleTextStyleFromRibbon);
 Office.actions.associate("runAutoColor", runAutoColorFromRibbon);
 Office.actions.associate("runInsertCagr", runInsertCagrFromRibbon);
 Office.actions.associate("resetFormatSettings", runResetFormatSettingsFromRibbon);
+Office.actions.associate("runShortcutManager", runShortcutManagerFromRibbon);
+Office.actions.associate("runPrintShortcuts", runPrintShortcutsFromRibbon);
 Office.actions.associate("CycleNumberFormat", cycleNumberFormatShortcut);
 Office.actions.associate("CycleCellFormat", cycleCellFormatShortcut);
 Office.actions.associate("CycleDateFormat", cycleDateFormatShortcut);

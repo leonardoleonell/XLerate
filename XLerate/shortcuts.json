@@ -3,27 +3,107 @@
     {
       "id": "CycleNumberFormat",
       "type": "ExecuteFunction",
-      "name": "Cycle number formats"
-    },
-    {
-      "id": "CycleCellFormat",
-      "type": "ExecuteFunction",
-      "name": "Cycle cell formats"
+      "name": "Number cycle"
     },
     {
       "id": "CycleDateFormat",
       "type": "ExecuteFunction",
-      "name": "Cycle date formats"
+      "name": "Date cycle"
+    },
+    {
+      "id": "CycleCellFormat",
+      "type": "ExecuteFunction",
+      "name": "Cell format cycle"
     },
     {
       "id": "CycleTextStyle",
       "type": "ExecuteFunction",
-      "name": "Cycle text styles"
+      "name": "Text style cycle"
+    },
+    {
+      "id": "CyclePercentFormat",
+      "type": "ExecuteFunction",
+      "name": "% cycle"
+    },
+    {
+      "id": "CycleMultipleFormat",
+      "type": "ExecuteFunction",
+      "name": "Multiple cycle"
+    },
+    {
+      "id": "TracePrecedents",
+      "type": "ExecuteFunction",
+      "name": "Trace Precedents"
+    },
+    {
+      "id": "TraceDependents",
+      "type": "ExecuteFunction",
+      "name": "Trace Dependents"
+    },
+    {
+      "id": "HorizontalCheck",
+      "type": "ExecuteFunction",
+      "name": "Horizontal check"
+    },
+    {
+      "id": "AutoColorSelection",
+      "type": "ExecuteFunction",
+      "name": "Autocolor selection"
+    },
+    {
+      "id": "InsertCagr",
+      "type": "ExecuteFunction",
+      "name": "Insert CAGR"
     },
     {
       "id": "SmartFillRight",
       "type": "ExecuteFunction",
       "name": "Smart Fill Right"
+    },
+    {
+      "id": "BorderTop",
+      "type": "ExecuteFunction",
+      "name": "Border cycle (top)"
+    },
+    {
+      "id": "BorderBottom",
+      "type": "ExecuteFunction",
+      "name": "Border cycle (bottom)"
+    },
+    {
+      "id": "BorderLeft",
+      "type": "ExecuteFunction",
+      "name": "Border cycle (left)"
+    },
+    {
+      "id": "BorderRight",
+      "type": "ExecuteFunction",
+      "name": "Border cycle (right)"
+    },
+    {
+      "id": "SwitchSign",
+      "type": "ExecuteFunction",
+      "name": "Switch sign"
+    },
+    {
+      "id": "ShortcutManager",
+      "type": "ExecuteFunction",
+      "name": "Shortcut manager"
+    },
+    {
+      "id": "PrintShortcuts",
+      "type": "ExecuteFunction",
+      "name": "Print all shortcuts"
+    },
+    {
+      "id": "DecreaseDecimals",
+      "type": "ExecuteFunction",
+      "name": "Decrease decimals"
+    },
+    {
+      "id": "IncreaseDecimals",
+      "type": "ExecuteFunction",
+      "name": "Increase decimals"
     },
     {
       "id": "ResetFormatSettings",
@@ -39,13 +119,13 @@
       }
     },
     {
-      "action": "CycleCellFormat",
+      "action": "CycleDateFormat",
       "key": {
         "default": "Ctrl+Shift+2"
       }
     },
     {
-      "action": "CycleDateFormat",
+      "action": "CycleCellFormat",
       "key": {
         "default": "Ctrl+Shift+3"
       }
@@ -57,9 +137,105 @@
       }
     },
     {
+      "action": "CyclePercentFormat",
+      "key": {
+        "default": "Ctrl+Shift+5"
+      }
+    },
+    {
+      "action": "CycleMultipleFormat",
+      "key": {
+        "default": "Ctrl+Shift+8"
+      }
+    },
+    {
+      "action": "TracePrecedents",
+      "key": {
+        "default": "Ctrl+Alt+P"
+      }
+    },
+    {
+      "action": "TraceDependents",
+      "key": {
+        "default": "Ctrl+Alt+D"
+      }
+    },
+    {
+      "action": "HorizontalCheck",
+      "key": {
+        "default": "Ctrl+Alt+Shift+H"
+      }
+    },
+    {
+      "action": "AutoColorSelection",
+      "key": {
+        "default": "Ctrl+Alt+A"
+      }
+    },
+    {
+      "action": "InsertCagr",
+      "key": {
+        "default": "Ctrl+Alt+Shift+C"
+      }
+    },
+    {
       "action": "SmartFillRight",
       "key": {
         "default": "Ctrl+Shift+R"
+      }
+    },
+    {
+      "action": "BorderTop",
+      "key": {
+        "default": "Ctrl+Alt+Shift+Up"
+      }
+    },
+    {
+      "action": "BorderBottom",
+      "key": {
+        "default": "Ctrl+Alt+Shift+Down"
+      }
+    },
+    {
+      "action": "BorderLeft",
+      "key": {
+        "default": "Ctrl+Alt+Shift+Left"
+      }
+    },
+    {
+      "action": "BorderRight",
+      "key": {
+        "default": "Ctrl+Alt+Shift+Right"
+      }
+    },
+    {
+      "action": "SwitchSign",
+      "key": {
+        "default": "Ctrl+Shift+N"
+      }
+    },
+    {
+      "action": "ShortcutManager",
+      "key": {
+        "default": "Ctrl+Alt+Shift+M"
+      }
+    },
+    {
+      "action": "PrintShortcuts",
+      "key": {
+        "default": "Ctrl+Alt+Shift+P"
+      }
+    },
+    {
+      "action": "DecreaseDecimals",
+      "key": {
+        "default": "Ctrl+Alt+Shift+9"
+      }
+    },
+    {
+      "action": "IncreaseDecimals",
+      "key": {
+        "default": "Ctrl+Alt+Shift+0"
       }
     },
     {

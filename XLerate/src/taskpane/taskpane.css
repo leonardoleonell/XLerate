@@ -973,3 +973,20 @@ textarea:focus-visible {
     transition-duration: 0.01ms !important;
   }
 }
+
+.shortcut-manager {
+  margin: 16px 0;
+}
+
+.shortcut-manager table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.shortcut-manager td {
+  padding: 2px 4px;
+}
+
+.shortcut-manager input {
+  width: 100%;
+}

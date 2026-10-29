@@ -23,6 +23,22 @@
     <main id="app-body" class="app-shell" style="display: none">
       <div id="settings-workspace"></div>
 
+      <section id="shortcut-manager" class="shortcut-manager">
+        <h2>Keyboard shortcuts</h2>
+        <p class="field-help">
+          Type a combination such as Ctrl+Alt+Shift+K (letters, digits and arrow keys only). Leave a
+          field empty to fall back to the default.
+        </p>
+        <table>
+          <tbody id="shortcut-manager-rows"></tbody>
+        </table>
+        <div class="detail-toolbar">
+          <button id="shortcut-manager-save" class="primary-btn" type="button">Save shortcuts</button>
+          <button id="shortcut-manager-reset" class="secondary-btn" type="button">Reset to defaults</button>
+        </div>
+        <p id="shortcut-manager-status" class="field-help"></p>
+      </section>
+
       <section class="status-strip" role="status" aria-live="polite">
         <strong><span class="status-dot" aria-hidden="true"></span>Status</strong>
         <p id="status-text">Ready.</p>

@@ -1,6 +1,7 @@
 /* global Office */
 
 import "./ribbonActions";
+import { wireShortcutManager } from "./extraShortcuts";
 import { clearAutoColorProbeLog, readAutoColorProbeLog } from "../adapters/autoColorProbe";
 import {
   getFormatSettingsValidationError,
@@ -202,6 +203,7 @@ Office.onReady((info) => {
     onStatus: setStatus,
   });
   installAutoColorProbeHelpers();
+  wireShortcutManager();
 
   setStatus("Ribbon actions are live on the XLerate tab. Workbook settings are ready.");
 });
