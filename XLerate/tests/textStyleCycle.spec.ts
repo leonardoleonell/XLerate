@@ -79,3 +79,22 @@ describe("cycle text style baseline parity", () => {
     expect(computeNextTextStyle(1, customStyles).style.name).toBe("Body");
   });
 });
+
+describe("text style border weight override", () => {
+  it("accepts an explicit borderWeight and rejects an invalid one", async () => {
+    const { getFormatSettingsValidationError, resolveFormatSettings } = await import(
+      "../src/core/formatSettings"
+    );
+    const base = resolveFormatSettings(undefined);
+    const ok = {
+      ...base,
+      textStyles: base.textStyles.map((s) => ({ ...s, borderWeight: "Thick" as const })),
+    };
+    expect(getFormatSettingsValidationError(ok)).toBeNull();
+    const bad = {
+      ...base,
+      textStyles: base.textStyles.map((s) => ({ ...s, borderWeight: "Huge" })),
+    };
+    expect(getFormatSettingsValidationError(bad as never)).not.toBeNull();
+  });
+});

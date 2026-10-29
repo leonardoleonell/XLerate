@@ -8,7 +8,15 @@ import {
   type ResolvedFormatSettings,
 } from "../core/formatSettings";
 import { DEFAULT_NUMBER_FORMATS, type NumberFormatDefinition } from "../core/numberFormatCycle";
-import { DEFAULT_TEXT_STYLES, type TextStyleDefinition } from "../core/textStyleCycle";
+import {
+  DEFAULT_TEXT_STYLES,
+  mapBorderWeight,
+  type TextStyleDefinition,
+} from "../core/textStyleCycle";
+
+function borderWeightOf(item: TextStyleDefinition): "Thin" | "Medium" | "Thick" {
+  return item.borderWeight ?? mapBorderWeight(item.borderStyle);
+}
 import { MAX_TRACE_MAX_DEPTH, MAX_TRACE_SAFETY_LIMIT } from "../core/traceUtils";
 
 type SettingsTabKey =
@@ -362,7 +370,9 @@ function renderCellFormatPreview(item: CellFormatDefinition): string {
 
 function renderTextStylePreview(item: TextStyleDefinition): string {
   const border =
-    item.borderStyle === "None" ? "none" : `1px solid ${safeColor(item.fontColor, "#1C1917")}`;
+    item.borderStyle === "None"
+      ? "none"
+      : `${{ Thin: 1, Medium: 2, Thick: 3 }[borderWeightOf(item)]}px solid ${safeColor(item.fontColor, "#1C1917")}`;
   const style = [
     `background:${item.fillPattern === "None" ? "transparent" : safeColor(item.backColor, "#FFFFFF")};`,
     `color:${safeColor(item.fontColor, "#1C1917")};`,
@@ -563,6 +573,14 @@ function renderTextStyleEditorContent(item: TextStyleDefinition): string {
           <option value="Double" ${item.borderStyle === "Double" ? "selected" : ""}>Double</option>
           <option value="Dash" ${item.borderStyle === "Dash" ? "selected" : ""}>Dash</option>
           <option value="Dot" ${item.borderStyle === "Dot" ? "selected" : ""}>Dot</option>
+        </select>`
+      )}
+      ${renderField(
+        "Border weight",
+        `<select data-action="update-list-field" data-field="borderWeight" ${item.borderStyle === "None" ? "disabled" : ""}>
+          <option value="Thin" ${borderWeightOf(item) === "Thin" ? "selected" : ""}>Thin</option>
+          <option value="Medium" ${borderWeightOf(item) === "Medium" ? "selected" : ""}>Medium</option>
+          <option value="Thick" ${borderWeightOf(item) === "Thick" ? "selected" : ""}>Thick</option>
         </select>`
       )}
     </div>

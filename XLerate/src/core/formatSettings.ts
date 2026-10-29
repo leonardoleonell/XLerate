@@ -199,6 +199,15 @@ function isTextStyleDefinition(value: unknown): value is TextStyleDefinition {
     return false;
   }
 
+  if (
+    value.borderWeight !== undefined &&
+    value.borderWeight !== "Thin" &&
+    value.borderWeight !== "Medium" &&
+    value.borderWeight !== "Thick"
+  ) {
+    return false;
+  }
+
   return (
     typeof value.bold === "boolean" &&
     typeof value.italic === "boolean" &&

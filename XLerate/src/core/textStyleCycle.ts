@@ -11,6 +11,8 @@ export type TextStyleDefinition = {
   fillPattern: TextStyleFillPattern;
   backColor: string;
   borderStyle: "None" | "Continuous" | "Double" | "Dash" | "Dot";
+  /** Overrides the weight implied by borderStyle when set. */
+  borderWeight?: "Thin" | "Medium" | "Thick";
   borderTop: boolean;
   borderBottom: boolean;
   borderLeft: boolean;

@@ -7,7 +7,7 @@ import {
 } from "../core/textStyleCycle";
 
 function styleToMutation(style: TextStyleDefinition): CellFormatMutation {
-  const weight = mapBorderWeight(style.borderStyle);
+  const weight = style.borderWeight ?? mapBorderWeight(style.borderStyle);
   const edge =
     style.borderStyle === "None"
       ? undefined
