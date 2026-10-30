@@ -34,9 +34,19 @@ describe("Auto-color contract (spec §3.12)", () => {
     expect(snap.fontColor).toBe(DEFAULT_AUTO_COLOR_PALETTE.input);
   });
 
-  it("colors a same-sheet formula green", async () => {
+  it("colors a same-sheet formula black", async () => {
     const port = new ExcelPortFake();
     port.setCellFormula(addr(0, 0), "=A1");
+    port.setSelection([addr(0, 0)]);
+    await runAutoColor(port);
+    port.setSelection([addr(0, 0)]);
+    const [snap] = await port.getSelectionFormatting();
+    expect(snap.fontColor).toBe(DEFAULT_AUTO_COLOR_PALETTE.formula);
+  });
+
+  it("colors an other-sheet link green", async () => {
+    const port = new ExcelPortFake();
+    port.setCellFormula(addr(0, 0), "=Inputs!A1");
     port.setSelection([addr(0, 0)]);
     await runAutoColor(port);
     port.setSelection([addr(0, 0)]);
@@ -44,9 +54,9 @@ describe("Auto-color contract (spec §3.12)", () => {
     expect(snap.fontColor).toBe(DEFAULT_AUTO_COLOR_PALETTE.worksheetLink);
   });
 
-  it("colors a workbook-link formula purple", async () => {
+  it("colors an other-workbook link purple", async () => {
     const port = new ExcelPortFake();
-    port.setCellFormula(addr(0, 0), "=Inputs!A1");
+    port.setCellFormula(addr(0, 0), "='[Model.xlsx]Sheet1'!A1");
     port.setSelection([addr(0, 0)]);
     await runAutoColor(port);
     port.setSelection([addr(0, 0)]);
@@ -54,9 +64,9 @@ describe("Auto-color contract (spec §3.12)", () => {
     expect(snap.fontColor).toBe(DEFAULT_AUTO_COLOR_PALETTE.workbookLink);
   });
 
-  it("colors an external workbook-link formula cyan", async () => {
+  it("colors an external data formula cyan", async () => {
     const port = new ExcelPortFake();
-    port.setCellFormula(addr(0, 0), "='[Model.xlsx]Sheet1'!A1");
+    port.setCellFormula(addr(0, 0), '=WEBSERVICE("https://example.com")');
     port.setSelection([addr(0, 0)]);
     await runAutoColor(port);
     port.setSelection([addr(0, 0)]);

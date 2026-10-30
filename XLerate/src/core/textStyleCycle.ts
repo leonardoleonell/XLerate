@@ -47,6 +47,7 @@ export const DEFAULT_TEXT_STYLES: TextStyleDefinition[] = [
     fillPattern: "Solid",
     backColor: "#F5F5F5",
     borderStyle: "Continuous",
+    borderWeight: "Thin",
     borderTop: false,
     borderBottom: true,
     borderLeft: false,

@@ -38,12 +38,18 @@ function toFormulaConsistencyRows(formulasR1C1: CellFormula[][]): FormulaConsist
   );
 }
 
-function toSmartFillRows(values: CellValue[][], formulas: CellFormula[][]): SmartFillRow[] {
+type MergedArea = { rowIndex: number; columnIndex: number; rowCount: number; columnCount: number };
+
+function toSmartFillRows(
+  values: CellValue[][],
+  formulas: CellFormula[][],
+  isMerged: (r: number, c: number) => boolean
+): SmartFillRow[] {
   return values.map((rowValues, r) =>
     rowValues.map((value, c) => {
       const formula = asFormulaCell(formulas[r][c]);
       const isEmpty = formula === null && (value === null || value === "");
-      return { isEmpty, isMerged: false };
+      return { isEmpty, isMerged: isMerged(r, c) };
     })
   );
 }
@@ -161,17 +167,45 @@ export async function applySmartFillRightAction(): Promise<SmartFillRightResult>
       sampleColCount
     );
     sample.load(["values", "formulas"]);
+    const mergedInSample = sample.getMergedAreasOrNullObject();
+    mergedInSample.load("isNullObject");
     await context.sync();
+
+    // The VBA skipped header rows containing merged cells (e.g. a merged
+    // "Projections" banner) and refused a merged active cell.
+    let mergedAreas: MergedArea[] = [];
+    if (!mergedInSample.isNullObject) {
+      mergedInSample.areas.load("items/rowIndex,items/columnIndex,items/rowCount,items/columnCount");
+      await context.sync();
+      mergedAreas = mergedInSample.areas.items.map((area) => ({
+        rowIndex: area.rowIndex,
+        columnIndex: area.columnIndex,
+        rowCount: area.rowCount,
+        columnCount: area.columnCount,
+      }));
+    }
+    const isMerged = (r: number, c: number): boolean => {
+      const row = startRowIndex + r;
+      const col = activeCell.columnIndex + c;
+      return mergedAreas.some(
+        (area) =>
+          row >= area.rowIndex &&
+          row < area.rowIndex + area.rowCount &&
+          col >= area.columnIndex &&
+          col < area.columnIndex + area.columnCount
+      );
+    };
 
     const sampleRows = toSmartFillRows(
       sample.values as CellValue[][],
-      sample.formulas as CellFormula[][]
+      sample.formulas as CellFormula[][],
+      isMerged
     );
     const result = computeSmartFillRight(sampleRows, {
       row: sampleRowCount,
       col: 1,
       formula: activeFormula,
-      isMerged: false,
+      isMerged: isMerged(sampleRowCount - 1, 0),
     });
 
     if (!result.ok) {
@@ -195,7 +229,9 @@ export async function applySmartFillRightAction(): Promise<SmartFillRightResult>
       boundaryAbsCol - activeCell.columnIndex + 1
     );
 
-    destination.copyFrom(activeCell, Excel.RangeCopyType.formulas);
+    // AutoFill (as in the VBA) carries the source cell's formatting along
+    // with the formula, matching Excel's own fill right.
+    activeCell.autoFill(destination, Excel.AutoFillType.fillDefault);
     await context.sync();
     out = { ok: true, boundaryColumn1Based: boundaryAbsCol + 1 };
   });

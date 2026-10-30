@@ -18,7 +18,6 @@ export type AutoColorCell = {
 export type AutoColorPalette = Record<Exclude<AutoColorCategory, "none">, string>;
 
 const CELL_REFERENCE_REGEX = /[$]?[A-Za-z]+[$]?[0-9]+|R[0-9]*C[0-9]*/;
-const EXTERNAL_WORKBOOK_REFERENCE_REGEX = /\[[^\]]+\]/;
 const SHEET_REFERENCE_REGEX = /(\[[^\]]+\])?'?[^!]+!'?/g;
 const A1_REFERENCE_REGEX = /[$]?[A-Za-z]+[$]?[0-9]+/g;
 const R1C1_REFERENCE_REGEX = /R[0-9]*C[0-9]*/g;
@@ -88,26 +87,27 @@ function hasCellReference(formula: string): boolean {
   return CELL_REFERENCE_REGEX.test(normalizeFormula(formula));
 }
 
+// A workbook bracket followed by a sheet and "!" — `[Book.xlsx]Sheet1!A1`,
+// `'C:\dir\[Book.xlsx]Sheet1'!A1` or the indexed `[1]Sheet1!A1`. Requiring
+// the sheet name to run straight into "!" (quoted, or unquoted without
+// operators) keeps structured references such as `Table1[Sales]+Sheet2!A1` out.
+const OTHER_WORKBOOK_REFERENCE_REGEX =
+  /\[[^\]]+\](?:[^'\[\]]*'|[^\s'!\[\]()+\-*/,;&=<>^"]+)!/;
+
+/** Links to another workbook (VBA IsWorkbookLink; default light purple). */
 export function isWorkbookLinkFormula(formula: string): boolean {
-  return formula.includes("!") && !EXTERNAL_WORKBOOK_REFERENCE_REGEX.test(formula);
+  return OTHER_WORKBOOK_REFERENCE_REGEX.test(formula);
 }
 
+/** Links to another sheet of this workbook (VBA IsWorksheetLink; default green). */
 export function isWorksheetLinkFormula(formula: string): boolean {
-  return (
-    hasCellReference(formula) &&
-    !formula.includes("!") &&
-    !EXTERNAL_WORKBOOK_REFERENCE_REGEX.test(formula)
-  );
+  return formula.includes("!") && !isWorkbookLinkFormula(formula);
 }
 
+/** External data functions (VBA IsExternalReference; default light blue). */
 export function isExternalReferenceFormula(formula: string): boolean {
   const upper = formula.toUpperCase();
-  return (
-    EXTERNAL_WORKBOOK_REFERENCE_REGEX.test(formula) ||
-    upper.includes("WEBSERVICE") ||
-    upper.includes("ODBC") ||
-    upper.includes("SQL")
-  );
+  return upper.includes("WEBSERVICE") || upper.includes("ODBC") || upper.includes("SQL");
 }
 
 export function isInputCell(cell: AutoColorCell): boolean {

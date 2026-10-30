@@ -10,9 +10,14 @@ import {
 
 describe("auto color baseline parity", () => {
   it("detects formula helper categories", () => {
-    expect(isWorksheetLinkFormula("=A1")).toBe(true);
-    expect(isWorkbookLinkFormula("=Sheet2!A1")).toBe(true);
-    expect(isExternalReferenceFormula("='[Book1.xlsx]Sheet1'!A1")).toBe(true);
+    expect(isWorksheetLinkFormula("=A1")).toBe(false);
+    expect(isWorksheetLinkFormula("=Sheet2!A1")).toBe(true);
+    expect(isWorkbookLinkFormula("=Sheet2!A1")).toBe(false);
+    expect(isWorkbookLinkFormula("='[Book1.xlsx]Sheet1'!A1")).toBe(true);
+    expect(isWorkbookLinkFormula("='C:\dir\[Book1.xlsx]Plan 1'!A1")).toBe(true);
+    expect(isWorkbookLinkFormula("=[1]Sheet1!A1")).toBe(true);
+    expect(isWorkbookLinkFormula("=SUM(Table1[Sales])")).toBe(false);
+    expect(isWorkbookLinkFormula("=SUM(Table1[Sales])+Sheet2!A1")).toBe(false);
     expect(isExternalReferenceFormula('=WEBSERVICE("https://x")')).toBe(true);
     expect(isOnlyNumbersAndOperators("=1+2*(3-4)")).toBe(true);
   });
@@ -50,14 +55,21 @@ describe("auto color baseline parity", () => {
     ).toBe("partialInput");
   });
 
-  it("classifies same-sheet link formulas", () => {
+  it("classifies same-sheet formulas as formula (black), as the VBA did", () => {
     expect(
       classifyAutoColorCell({
         formula: "=A1",
         value: 123,
         numberFormat: "General",
       })
-    ).toBe("worksheetLink");
+    ).toBe("formula");
+    expect(
+      classifyAutoColorCell({
+        formula: "=C3+C4",
+        value: 500,
+        numberFormat: "General",
+      })
+    ).toBe("formula");
   });
 
   it("classifies wrapped array-formula syntax the same as regular formulas", () => {
@@ -67,7 +79,7 @@ describe("auto color baseline parity", () => {
         value: 123,
         numberFormat: "General",
       })
-    ).toBe("worksheetLink");
+    ).toBe("formula");
 
     expect(
       classifyAutoColorCell({
@@ -78,24 +90,27 @@ describe("auto color baseline parity", () => {
     ).toBe("input");
   });
 
-  it("classifies workbook link formulas", () => {
+  it("classifies other-sheet links as worksheet links (green)", () => {
     expect(
       classifyAutoColorCell({
         formula: "=Sheet2!A1",
         value: 123,
         numberFormat: "General",
       })
-    ).toBe("workbookLink");
+    ).toBe("worksheetLink");
   });
 
-  it("classifies external formulas", () => {
+  it("classifies other-workbook links as workbook links (purple)", () => {
     expect(
       classifyAutoColorCell({
         formula: "='[Book1.xlsx]Sheet1'!A1",
         value: 123,
         numberFormat: "General",
       })
-    ).toBe("external");
+    ).toBe("workbookLink");
+  });
+
+  it("classifies external data formulas", () => {
 
     expect(
       classifyAutoColorCell({
@@ -116,14 +131,14 @@ describe("auto color baseline parity", () => {
     ).toBe("input");
   });
 
-  it("classifies same-sheet referenced formulas as worksheet links", () => {
+  it("classifies same-sheet referenced functions as formula", () => {
     expect(
       classifyAutoColorCell({
         formula: "=SUM(A1:A3)",
         value: 10,
         numberFormat: "General",
       })
-    ).toBe("worksheetLink");
+    ).toBe("formula");
   });
 
   it("does not classify date-like numeric values as input", () => {
@@ -150,8 +165,8 @@ describe("auto color baseline parity", () => {
     ]);
 
     expect(grid).toEqual([
-      ["partialInput", "workbookLink", "input"],
-      ["worksheetLink", "hyperlink", "none"],
+      ["partialInput", "worksheetLink", "input"],
+      ["formula", "hyperlink", "none"],
     ]);
   });
 });

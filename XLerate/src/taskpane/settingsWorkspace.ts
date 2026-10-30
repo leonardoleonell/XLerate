@@ -100,22 +100,22 @@ const AUTO_COLOR_FIELDS: Array<{
   {
     key: "formula",
     label: "Formula",
-    description: "Formulas with no external references.",
+    description: "Formulas referencing cells on the same sheet.",
   },
   {
     key: "worksheetLink",
-    label: "Same-sheet link",
-    description: "Formulas referencing cells on the active sheet.",
-  },
-  {
-    key: "workbookLink",
     label: "Cross-sheet link",
     description: "Formulas referencing other sheets in the workbook.",
   },
   {
+    key: "workbookLink",
+    label: "Workbook link",
+    description: "Formulas referencing another workbook.",
+  },
+  {
     key: "external",
-    label: "External link",
-    description: "Formulas referencing another workbook or external source.",
+    label: "External data",
+    description: "Formulas pulling external data (WEBSERVICE, ODBC, SQL).",
   },
   {
     key: "hyperlink",
