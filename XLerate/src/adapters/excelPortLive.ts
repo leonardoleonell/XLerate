@@ -38,28 +38,10 @@ export class ExcelPortLive implements ExcelPort {
       }
       await context.sync();
 
-      const formulaArrayCells: Excel.Range[][][] = [];
-      for (const area of areas) {
-        const areaCells: Excel.Range[][] = [];
-        for (let r = 0; r < area.rowCount; r++) {
-          const rowCells: Excel.Range[] = [];
-          for (let c = 0; c < area.columnCount; c++) {
-            const cell = area.getCell(r, c);
-            // eslint-disable-next-line office-addins/no-navigational-load
-            cell.load("formulaArray");
-            rowCells.push(cell);
-          }
-          areaCells.push(rowCells);
-        }
-        formulaArrayCells.push(areaCells);
-      }
-      await context.sync();
-
       const snapshots: CellSnapshot[] = [];
       for (let areaIndex = 0; areaIndex < areas.length; areaIndex++) {
         const area = areas[areaIndex];
         const worksheet = area.worksheet;
-        const areaCells = formulaArrayCells[areaIndex];
 
         for (let r = 0; r < area.rowCount; r++) {
           for (let c = 0; c < area.columnCount; c++) {
@@ -71,19 +53,18 @@ export class ExcelPortLive implements ExcelPort {
               col: area.columnIndex + c,
             };
             const formulaText = typeof formula === "string" ? formula : "";
-            const formulaArrayText = areaCells[r][c].formulaArray;
-            const isArrayFormula =
-              typeof formulaArrayText === "string" && formulaArrayText.length > 0;
-            const arrayFormula = isArrayFormula
-              ? formatArrayFormulaForSnapshot(formulaArrayText)
-              : "";
-            const isFormula = isArrayFormula || formulaText.startsWith("=");
+            // Range.formulaArray is not a HasArray test: on Excel Desktop it
+            // returns the formula (or the constant) of ordinary cells too, so
+            // trusting it turned typed numbers into {=-(500)} array formulas.
+            // Office.js has no reliable legacy-CSE probe, so every cell is
+            // written back as an ordinary formula.
+            const isFormula = formulaText.startsWith("=");
 
             snapshots.push({
               address,
               isFormula,
-              isArrayFormula,
-              formula: isArrayFormula ? arrayFormula : isFormula ? formulaText : "",
+              isArrayFormula: false,
+              formula: isFormula ? formulaText : "",
               value: isFormula ? undefined : value,
             });
           }
@@ -732,7 +713,7 @@ function pushAutoColorSnapshots(
         address,
         isFormula,
         formula: isFormula ? formulaText : "",
-        value: isFormula ? undefined : value,
+        value,
         numberFormat:
           Array.isArray(area.numberFormat) && Array.isArray(area.numberFormat[r])
             ? String(area.numberFormat[r][c] ?? "General")
@@ -763,17 +744,6 @@ function markHyperlinks(
       }
     }
   }
-}
-
-function formatArrayFormulaForSnapshot(formulaArray: string): string {
-  const trimmed = formulaArray.trim();
-  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    return trimmed;
-  }
-  if (trimmed.startsWith("=")) {
-    return `{${trimmed}}`;
-  }
-  return `{=${trimmed}}`;
 }
 
 function normalizeFormulaArrayForWrite(formula: string): string {

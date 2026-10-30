@@ -26,7 +26,7 @@ export async function runAutoColor(
   for (const cell of cells) {
     const category = classifyAutoColorCell({
       formula: cell.isFormula ? cell.formula : null,
-      value: cell.isFormula ? undefined : cell.value,
+      value: cell.value,
       numberFormat: cell.numberFormat ?? null,
       hasHyperlink: cell.hasHyperlink ?? false,
     });

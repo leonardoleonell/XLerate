@@ -15,6 +15,28 @@ describe("switchSignCell baseline parity", () => {
     });
   });
 
+  it("toggles a previous switch back instead of nesting", () => {
+    expect(switchSignCell({ isFormula: true, formula: "=-(A1+B1)" })).toEqual({
+      isFormula: true,
+      formula: "=A1+B1"
+    });
+    expect(switchSignCell({ isFormula: true, formula: "=-(-(500))" })).toEqual({
+      isFormula: true,
+      formula: "=-(500)"
+    });
+  });
+
+  it("does not unwrap when the leading -( closes before the end", () => {
+    expect(switchSignCell({ isFormula: true, formula: "=-(A1)+(B1)" })).toEqual({
+      isFormula: true,
+      formula: "=-(-(A1)+(B1))"
+    });
+    expect(switchSignCell({ isFormula: true, formula: '=-(IF(A1>0,")",B1))' })).toEqual({
+      isFormula: true,
+      formula: '=IF(A1>0,")",B1)'
+    });
+  });
+
   it("handles array formulas", () => {
     expect(
       switchSignCell({

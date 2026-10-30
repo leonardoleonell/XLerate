@@ -17,6 +17,23 @@ describe("Auto-color contract (spec §3.12)", () => {
     expect(snap.fontColor).toBe(DEFAULT_AUTO_COLOR_PALETTE.input);
   });
 
+  it("colors a hardcoded formula such as a switched sign blue", async () => {
+    // The fake does not calculate, so supply the computed value Excel reports.
+    class CalculatedPort extends ExcelPortFake {
+      override async getSelectionAutoColorCells() {
+        const cells = await super.getSelectionAutoColorCells();
+        return cells.map((cell) => ({ ...cell, value: -500 }));
+      }
+    }
+    const port = new CalculatedPort();
+    port.setCellFormula(addr(0, 0), "=-(500)");
+    port.setSelection([addr(0, 0)]);
+    await runAutoColor(port);
+    port.setSelection([addr(0, 0)]);
+    const [snap] = await port.getSelectionFormatting();
+    expect(snap.fontColor).toBe(DEFAULT_AUTO_COLOR_PALETTE.input);
+  });
+
   it("colors a same-sheet formula green", async () => {
     const port = new ExcelPortFake();
     port.setCellFormula(addr(0, 0), "=A1");
