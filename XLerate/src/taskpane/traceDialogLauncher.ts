@@ -54,11 +54,24 @@ async function pullFocusToGrid(): Promise<void> {
   }
 }
 
+// The host returns focus to the add-in webview some time after the dialog
+// window closes, and that can land after a single early pull. Releasing the
+// webview's own focus and pulling again later keeps arrow keys on the grid.
+const FOCUS_PULL_DELAYS_MS = [50, 250, 600];
+
 function schedulePullFocusToGrid(): void {
-  setTimeout(() => {
-    if (activeDialog !== null) return;
-    void pullFocusToGrid();
-  }, 50);
+  for (const delay of FOCUS_PULL_DELAYS_MS) {
+    setTimeout(() => {
+      if (activeDialog !== null) return;
+      try {
+        (document.activeElement as HTMLElement | null)?.blur();
+        window.blur();
+      } catch {
+        // Best effort only.
+      }
+      void pullFocusToGrid();
+    }, delay);
+  }
 }
 
 function disposeActiveSession(): void {
