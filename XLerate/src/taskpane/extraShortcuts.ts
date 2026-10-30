@@ -149,6 +149,7 @@ export async function renderShortcutManager(): Promise<void> {
     input.value = keys[item.id] ?? "";
     input.placeholder = item.key;
     input.dataset.actionId = item.id;
+    input.dataset.loaded = input.value;
     keyCell.appendChild(input);
     row.append(name, keyCell);
     body.appendChild(row);
@@ -160,15 +161,24 @@ async function saveShortcutManager(): Promise<void> {
     setManagerStatus("This Excel version cannot change shortcuts at runtime.");
     return;
   }
+  // Send only the rows the user edited. Re-sending untouched rows turns every
+  // default into a user custom shortcut, and Excel lets its own built-in
+  // shortcuts silently win over custom ones instead of asking the user.
   const changes: Record<string, string | null> = {};
   document
     .querySelectorAll<HTMLInputElement>("#shortcut-manager-rows input[data-action-id]")
     .forEach((input) => {
       const value = input.value.trim();
+      if (value === (input.dataset.loaded ?? "").trim()) return;
       changes[input.dataset.actionId as string] = value === "" ? null : value;
     });
+  if (Object.keys(changes).length === 0) {
+    setManagerStatus("No changes to save.");
+    return;
+  }
   try {
     await Office.actions.replaceShortcuts(changes);
+    await renderShortcutManager();
     setManagerStatus("Shortcuts saved.");
   } catch (error) {
     setManagerStatus(`Could not save: ${error instanceof Error ? error.message : String(error)}`);

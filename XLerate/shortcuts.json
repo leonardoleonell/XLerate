@@ -151,13 +151,13 @@
     {
       "action": "TracePrecedents",
       "key": {
-        "default": "Ctrl+Alt+P"
+        "default": "Ctrl+Shift+P"
       }
     },
     {
       "action": "TraceDependents",
       "key": {
-        "default": "Ctrl+Alt+D"
+        "default": "Ctrl+Shift+D"
       }
     },
     {
