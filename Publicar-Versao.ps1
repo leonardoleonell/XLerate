@@ -20,10 +20,12 @@
     .\Publicar-Versao.ps1                    # sobe o 3o numero
     .\Publicar-Versao.ps1 -Versao 1.2.0.0
     .\Publicar-Versao.ps1 -SemPush           # tudo local, sem commit/push
+    .\Publicar-Versao.ps1 -SoLimparCache     # so limpa o cache do XLerate
 #>
 param(
   [string]$Versao,
-  [switch]$SemPush
+  [switch]$SemPush,
+  [switch]$SoLimparCache
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,6 +38,46 @@ $gh        = Join-Path $env:LOCALAPPDATA 'gh-cli\bin\gh.exe'
 $masterXlsx = Join-Path $addinsDir 'Ativar-XLerate.xlsx'
 
 function Step($msg) { Write-Host "`n==> $msg" -ForegroundColor Cyan }
+
+function Clear-XLerateCache {
+  # 7. Cache do Office - SO o que e do XLerate.
+  #    NUNCA apagar a pasta Wef inteira: Wef\webview2 guarda os logins dos
+  #    outros add-ins (Claude, GPT...) e a pasta e compartilhada com Word/PPT.
+  #    Mapeado em 2026-11-17:
+  #      Wef\{GUID}\<hash>\Manifests\<id>_<versao>
+  #      Wef\{GUID}\<hash>\ExtendedManifest\<id>_<versao>_<lang>
+  #      Wef\AggregatedCache\<v>\<hash>\ShortcutsMapping.Excel.*  (mapa de atalhos
+  #        agregado de todos os add-ins; o Excel recria, nao afeta login)
+  #    Caminhos passam de 260 chars -> usar prefixo \\?\.
+  $addinId = ([xml](Get-Content $manifest -Raw -Encoding UTF8)).OfficeApp.Id
+  $wef = '\\?\' + (Join-Path $env:LOCALAPPDATA 'Microsoft\Office\16.0\Wef')
+  $alvos = @()
+  if (Test-Path -LiteralPath $wef) {
+    $alvos += Get-ChildItem -LiteralPath $wef -Directory -Filter '{*}' -ErrorAction SilentlyContinue |
+      ForEach-Object { Get-ChildItem -LiteralPath $_.FullName -Directory -ErrorAction SilentlyContinue } |
+      ForEach-Object { foreach ($sub in 'Manifests', 'ExtendedManifest') {
+        $d = "$($_.FullName)\$sub"
+        if (Test-Path -LiteralPath $d) { Get-ChildItem -LiteralPath $d -Force | Where-Object Name -like "$addinId*" } } }
+    $agg = "$wef\AggregatedCache"
+    if (Test-Path -LiteralPath $agg) {
+      $alvos += Get-ChildItem -LiteralPath $agg -Recurse -File -Force -ErrorAction SilentlyContinue |
+        Where-Object Name -like 'ShortcutsMapping.Excel.*'
+    }
+  }
+  $falhas = 0
+  foreach ($a in $alvos) {
+    if ($a.FullName -match '\\webview2\\') { continue }   # trava de seguranca
+    try { Remove-Item -LiteralPath $a.FullName -Recurse -Force -ErrorAction Stop; Write-Host "  apagado: $($a.Name)" }
+    catch { $falhas++; Write-Host "  em uso: $($a.Name)" -ForegroundColor Yellow }
+  }
+  if (-not $alvos) { Write-Host '  nada do XLerate no cache (ok)' }
+  if ($falhas) { Write-Host 'Aviso: alguns arquivos estavam em uso. Feche o Excel e rode: .\Publicar-Versao.ps1 -SoLimparCache.' -ForegroundColor Yellow }
+}
+
+if ($SoLimparCache) {
+  if (Get-Process EXCEL -ErrorAction SilentlyContinue) { throw 'Feche o Excel antes.' }
+  Step 'Limpando cache do XLerate'; Clear-XLerateCache; return
+}
 
 # Node (winget) nem sempre esta no PATH da sessao
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
@@ -117,17 +159,9 @@ foreach ($d in $localDir, $addinsDir, $shareDir) {
 $zipOut = Join-Path $addinsDir 'XLerate-Pessoal.zip'
 Compress-Archive -Path (Join-Path $shareDir '*') -DestinationPath $zipOut -Force
 
-# 7. Cache do Office
-Step 'Limpando cache Wef'
-$wef = Join-Path $env:LOCALAPPDATA 'Microsoft\Office\16.0\Wef'
-$travados = 0
-Get-ChildItem $wef -Directory -ErrorAction SilentlyContinue | ForEach-Object {
-  try { Remove-Item $_.FullName -Recurse -Force -ErrorAction Stop } catch { $travados++ }
-}
-if ($travados) {
-  Write-Host "Aviso: $travados pasta(s) do cache em uso (Word/PowerPoint/Outlook abertos?)." -ForegroundColor Yellow
-  Write-Host '       Se o add-in nao carregar, feche todo o Office e rode: Remove-Item "$env:LOCALAPPDATA\Microsoft\Office\16.0\Wef\*" -Recurse -Force' -ForegroundColor Yellow
-}
+# 7. Cache do Office (so o do XLerate - ver Clear-XLerateCache)
+Step 'Limpando cache do XLerate (sem tocar nos outros add-ins)'
+Clear-XLerateCache
 
 Write-Host "`nPronto: versao $Versao publicada." -ForegroundColor Green
 if (-not $SemPush) { Write-Host 'Espere ~1 min o deploy do Pages antes de abrir o Excel.' }
