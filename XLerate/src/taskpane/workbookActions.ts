@@ -1,10 +1,5 @@
 /* global Excel */
 
-import {
-  analyzeHorizontalFormulaConsistency,
-  type FormulaConsistencyCell,
-  type FormulaConsistencyMark,
-} from "../core/formulaConsistency";
 import { computeSmartFillRight, type SmartFillRow } from "../core/smartFillRight";
 
 /**
@@ -19,23 +14,8 @@ import { computeSmartFillRight, type SmartFillRow } from "../core/smartFillRight
 type CellFormula = string | number | boolean;
 type CellValue = string | number | boolean | null;
 
-const CONSISTENT_COLOR = "#00F2DA";
-const INCONSISTENT_COLOR = "#FF0000";
-
 function asFormulaCell(cell: CellFormula): string | null {
   return typeof cell === "string" && cell.startsWith("=") ? cell : null;
-}
-
-function toFormulaConsistencyRows(formulasR1C1: CellFormula[][]): FormulaConsistencyCell[][] {
-  return formulasR1C1.map((row) =>
-    row.map((raw) => {
-      const formula = asFormulaCell(raw);
-      return {
-        isFormula: formula !== null,
-        formulaR1C1: formula ?? undefined,
-      };
-    })
-  );
 }
 
 type MergedArea = { rowIndex: number; columnIndex: number; rowCount: number; columnCount: number };
@@ -52,73 +32,6 @@ function toSmartFillRows(
       return { isEmpty, isMerged: isMerged(r, c) };
     })
   );
-}
-
-function applyConsistencyColor(cell: Excel.Range, mark: FormulaConsistencyMark): void {
-  const color =
-    mark === "consistent"
-      ? CONSISTENT_COLOR
-      : mark === "inconsistent"
-        ? INCONSISTENT_COLOR
-        : null;
-  if (color === null) return;
-  // Office.js requires fill.pattern to be set before color renders
-  // reliably on a previously-unfilled cell. See CLAUDE.md gotchas.
-  cell.format.fill.pattern = "Solid";
-  cell.format.fill.color = color;
-}
-
-// ---- Formula Consistency ----
-
-export type FormulaConsistencyResult =
-  | { applied: false; address: string }
-  | { applied: true; address: string; consistent: number; inconsistent: number };
-
-/**
- * Apply green/red fills to formula cells in the selection that are
- * consistent / inconsistent with their horizontal neighbors. Single Excel
- * undo step; Ctrl+Z reverses. No persistent state (see CLAUDE.md —
- * saveAsync breaks the undo chain).
- */
-export async function applyFormulaConsistencyAction(): Promise<FormulaConsistencyResult> {
-  let out: FormulaConsistencyResult = { applied: false, address: "" };
-  await Excel.run(async (context) => {
-    const range = context.workbook.getSelectedRange();
-    range.load(["formulasR1C1", "rowCount", "columnCount", "address"]);
-    await context.sync();
-
-    const rows = toFormulaConsistencyRows(range.formulasR1C1 as CellFormula[][]);
-    const marks = analyzeHorizontalFormulaConsistency(rows);
-
-    let consistentCount = 0;
-    let inconsistentCount = 0;
-    let applied = false;
-
-    for (let r = 0; r < range.rowCount; r += 1) {
-      for (let c = 0; c < range.columnCount; c += 1) {
-        const mark = marks[r][c];
-        if (mark === "none") continue;
-        applyConsistencyColor(range.getCell(r, c), mark);
-        applied = true;
-        if (mark === "consistent") consistentCount += 1;
-        else inconsistentCount += 1;
-      }
-    }
-
-    if (!applied) {
-      out = { applied: false, address: range.address };
-      return;
-    }
-
-    await context.sync();
-    out = {
-      applied: true,
-      address: range.address,
-      consistent: consistentCount,
-      inconsistent: inconsistentCount,
-    };
-  });
-  return out;
 }
 
 // ---- Smart Fill Right ----

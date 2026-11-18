@@ -21,7 +21,7 @@ import { runInsertCagr as runInsertCagrService } from "../services/cagr.service"
 import { runSwitchSign as runSwitchSignService } from "../services/switchSign.service";
 import { readWorkbookFormatSettings } from "./formatSettingsStore";
 import { openTraceDialog } from "./traceDialogLauncher";
-import { applyFormulaConsistencyAction } from "./workbookActions";
+import { toggleFormulaMapAction } from "./formulaMap";
 
 // Above this many cells, reading every number format is too slow; the
 // decimals shortcut then follows the active cell like the cycles do.
@@ -227,7 +227,7 @@ Office.actions.associate(
   "TraceDependents",
   logged(() => openTraceDialog("dependents", readWorkbookFormatSettings().trace))
 );
-Office.actions.associate("HorizontalCheck", logged(() => applyFormulaConsistencyAction()));
+Office.actions.associate("HorizontalCheck", logged(() => toggleFormulaMapAction()));
 Office.actions.associate(
   "AutoColorSelection",
   logged(() =>

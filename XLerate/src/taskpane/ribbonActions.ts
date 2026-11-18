@@ -29,10 +29,8 @@ import {
 } from "./formatSettingsStore";
 import { openShortcutManager, printShortcuts } from "./extraShortcuts";
 import { openTraceDialog } from "./traceDialogLauncher";
-import {
-  applyFormulaConsistencyAction,
-  applySmartFillRightAction,
-} from "./workbookActions";
+import { toggleFormulaMapAction } from "./formulaMap";
+import { applySmartFillRightAction } from "./workbookActions";
 
 // DIAGNOSTIC (autocolor hang on Ctrl+A): catch anything that escapes finish()
 // or fires after a handler returns, so we always leave a trace in the console.
@@ -93,7 +91,7 @@ async function runSmartFillRightFromRibbon(event: Office.AddinCommands.Event): P
 
 async function runFormulaConsistencyFromRibbon(event: Office.AddinCommands.Event): Promise<void> {
   await finish(event, async () => {
-    await applyFormulaConsistencyAction();
+    await toggleFormulaMapAction();
   });
 }
 
