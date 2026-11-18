@@ -44,26 +44,39 @@ function logFocus(step: string, detail: Record<string, unknown> = {}): void {
   });
 }
 
+/**
+ * Ask Excel to give keyboard focus back to the grid. Each call runs in its
+ * own batch: when activate/select/focus shared one batch, a single
+ * "InvalidOperation" (seen in sideload, 2026-11-18) sank all of them and
+ * we could not tell which call Excel refused.
+ */
 async function pullFocusToGrid(step: string): Promise<void> {
   const supported = Office.context.requirements.isSetSupported("ExcelApiDesktop", "1.1");
+  const result: Record<string, unknown> = { workbookFocusApi: supported };
+
+  if (supported) {
+    try {
+      await Excel.run(async (context) => {
+        context.workbook.focus();
+        await context.sync();
+      });
+      result.focus = "ok";
+    } catch (error) {
+      result.focus = String(error);
+    }
+  }
+
   try {
     await Excel.run(async (context) => {
-      const workbook = context.workbook;
-      const cell = workbook.getActiveCell();
-      cell.load("worksheet/name");
-      await context.sync();
-      cell.worksheet.activate();
-      cell.select();
-      if (supported) {
-        workbook.focus();
-      }
+      context.workbook.getActiveCell().select();
       await context.sync();
     });
-    logFocus(step, { workbookFocusApi: supported, ok: true });
+    result.select = "ok";
   } catch (error) {
-    // Focus return is best effort. The selected cell remains correct.
-    logFocus(step, { workbookFocusApi: supported, ok: false, error: String(error) });
+    result.select = String(error);
   }
+
+  logFocus(step, result);
 }
 
 // The host returns focus to the add-in webview some time after the dialog
