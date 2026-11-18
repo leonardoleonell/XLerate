@@ -35,7 +35,17 @@ function logTraceMetric(sessionId: string, metric: TracePortMetric): void {
   console.log("[trace-metric]", { sessionId, ...metric });
 }
 
-async function pullFocusToGrid(): Promise<void> {
+function logFocus(step: string, detail: Record<string, unknown> = {}): void {
+  // eslint-disable-next-line no-console
+  console.log("[trace-focus]", step, {
+    at: Math.round(performance.now()),
+    paneHasFocus: typeof document.hasFocus === "function" ? document.hasFocus() : "n/a",
+    ...detail,
+  });
+}
+
+async function pullFocusToGrid(step: string): Promise<void> {
+  const supported = Office.context.requirements.isSetSupported("ExcelApiDesktop", "1.1");
   try {
     await Excel.run(async (context) => {
       const workbook = context.workbook;
@@ -44,13 +54,15 @@ async function pullFocusToGrid(): Promise<void> {
       await context.sync();
       cell.worksheet.activate();
       cell.select();
-      if (Office.context.requirements.isSetSupported("ExcelApiDesktop", "1.1")) {
+      if (supported) {
         workbook.focus();
       }
       await context.sync();
     });
-  } catch {
+    logFocus(step, { workbookFocusApi: supported, ok: true });
+  } catch (error) {
     // Focus return is best effort. The selected cell remains correct.
+    logFocus(step, { workbookFocusApi: supported, ok: false, error: String(error) });
   }
 }
 
@@ -69,7 +81,7 @@ function schedulePullFocusToGrid(): void {
       } catch {
         // Best effort only.
       }
-      void pullFocusToGrid();
+      void pullFocusToGrid(`pull+${delay}ms`);
     }, delay);
   }
 }
@@ -80,32 +92,49 @@ function disposeActiveSession(): void {
   activeSession = null;
 }
 
-function closeActiveDialog(): void {
+/**
+ * Close the trace dialog. When the user closes it (Enter/Esc), hand focus to
+ * the grid BEFORE closing: Windows then returns the keyboard to where Excel
+ * already had it instead of to the add-in pane, which left arrow keys stuck
+ * until a mouse click. Opening a new trace closes synchronously instead,
+ * because Office allows only one dialog at a time.
+ */
+function closeActiveDialog(options: { focusGridFirst?: boolean } = {}): void {
   disposeActiveSession();
   pendingOpen = null;
-  if (activeDialog) {
+  const dialog = activeDialog;
+  if (!dialog) return;
+  activeDialog = null;
+  activeDialogSessionId = null;
+
+  const close = (): void => {
     try {
-      activeDialog.close();
+      dialog.close();
     } catch {
       // The dialog may already be closing through the host UI.
     }
-    activeDialog = null;
-    activeDialogSessionId = null;
+    logFocus("dialog closed");
     schedulePullFocusToGrid();
+  };
+
+  if (!options.focusGridFirst) {
+    close();
+    return;
   }
+  void pullFocusToGrid("before close").finally(close);
 }
 
 function restoreRootAndClose(dialog: Office.Dialog, sessionId: string): void {
   const session = activeSession;
   if (!session) {
-    closeActiveDialog();
+    closeActiveDialog({ focusGridFirst: true });
     return;
   }
   void traceScheduler
     .enqueueNavigation("restore-root", () => session.restoreRootSelection())
     .catch(() => undefined)
     .finally(() => {
-      if (isCurrentSession(dialog, sessionId)) closeActiveDialog();
+      if (isCurrentSession(dialog, sessionId)) closeActiveDialog({ focusGridFirst: true });
     });
 }
 
@@ -298,7 +327,7 @@ function handleDialogMessage(
     return;
   }
   if (message.restoreRoot === true) restoreRootAndClose(dialog, sessionId);
-  else closeActiveDialog();
+  else closeActiveDialog({ focusGridFirst: true });
 }
 
 export type OpenTraceDialogOptions = {
