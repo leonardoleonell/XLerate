@@ -1,6 +1,8 @@
 import type {
   DirectNeighborResult,
   TraceCellData,
+  TraceDynamicResult,
+  TraceNodeData,
   TraceRangeData,
   TraceRangePageResult,
   TraceTableSection,
@@ -23,6 +25,116 @@ import {
   type TraceDirection,
 } from "../core/traceUtils";
 import type { TraceLoadRequest, TracePort } from "./tracePort";
+import { isStillPainted, planRestoreFill, type OriginalFill } from "../core/formulaMap";
+import {
+  quoteSheet,
+  rectA1,
+  type RefValue,
+  type Scalar,
+  type UsedBounds,
+} from "../core/formulaEval";
+import {
+  areasAddress,
+  resolveDynamicReferences,
+  type CellRect,
+  type DynamicDataProvider,
+} from "../core/traceDynamic";
+
+const ROOT_MARK_COLOR = "#FF99FF";
+const MAX_DYNAMIC_CELLS = 500;
+
+/** Reads what the dynamic-reference resolver asks for, one sync per batch. */
+function excelDynamicDataProvider(): DynamicDataProvider {
+  return {
+    async readRects(rects: CellRect[]): Promise<unknown[][][]> {
+      return Excel.run(async (context) => {
+        const ranges = rects.map((rect) => {
+          const range = context.workbook.worksheets
+            .getItem(rect.sheet)
+            .getRangeByIndexes(rect.r1, rect.c1, rect.r2 - rect.r1 + 1, rect.c2 - rect.c1 + 1);
+          range.load("values");
+          return range;
+        });
+        await context.sync();
+        return ranges.map((range) => range.values as unknown[][]);
+      });
+    },
+    async readUsedRanges(sheets: string[]): Promise<UsedBounds[]> {
+      return Excel.run(async (context) => {
+        const used = sheets.map((sheet) => {
+          const range = context.workbook.worksheets.getItem(sheet).getUsedRangeOrNullObject(true);
+          range.load(["isNullObject", "rowIndex", "columnIndex", "rowCount", "columnCount"]);
+          return range;
+        });
+        await context.sync();
+        return used.map((range) =>
+          range.isNullObject
+            ? null
+            : {
+                r1: range.rowIndex,
+                c1: range.columnIndex,
+                r2: range.rowIndex + range.rowCount - 1,
+                c2: range.columnIndex + range.columnCount - 1,
+              }
+        );
+      });
+    },
+    async resolveNames(names, formulaSheet): Promise<Array<RefValue | Scalar>> {
+      return Excel.run(async (context) => {
+        const lookups = names.map((entry) => {
+          const local = context.workbook.worksheets
+            .getItem(entry.sheet ?? formulaSheet)
+            .names.getItemOrNullObject(entry.name);
+          const global = entry.sheet
+            ? null
+            : context.workbook.names.getItemOrNullObject(entry.name);
+          local.load(["type", "value"]);
+          global?.load(["type", "value"]);
+          return { local, global };
+        });
+        await context.sync();
+        const ranges = lookups.map(({ local, global }) => {
+          const item = !local.isNullObject ? local : global && !global.isNullObject ? global : null;
+          if (!item) return { item: null, range: null };
+          if (item.type !== "Range") return { item, range: null };
+          const range = item.getRangeOrNullObject();
+          range.load([
+            "isNullObject",
+            "rowIndex",
+            "columnIndex",
+            "rowCount",
+            "columnCount",
+            "worksheet/name",
+          ]);
+          return { item, range };
+        });
+        await context.sync();
+        return ranges.map(({ item, range }): RefValue | Scalar => {
+          if (!item) return { error: "#NAME?" };
+          if (range && !range.isNullObject) {
+            return {
+              kind: "ref",
+              sheet: range.worksheet.name,
+              r1: range.rowIndex,
+              c1: range.columnIndex,
+              r2: range.rowIndex + range.rowCount - 1,
+              c2: range.columnIndex + range.columnCount - 1,
+            };
+          }
+          const raw = item.value as unknown;
+          if (typeof raw === "number" || typeof raw === "boolean") return raw;
+          if (typeof raw === "string") {
+            const text = raw.replace(/^=/, "");
+            const n = Number(text);
+            if (text.trim() !== "" && !Number.isNaN(n)) return n;
+            return /^".*"$/.test(text) ? text.slice(1, -1) : { error: "#NAME?" };
+          }
+          return { error: "#NAME?" };
+        });
+      });
+    },
+  };
+}
 
 const RANGE_COLLECTION_LOAD_SPEC =
   "items/address,rowIndex,columnIndex,rowCount,columnCount,worksheet/name";
@@ -308,6 +420,159 @@ export class TracePortLive implements TracePort {
       hasMore: bounds.hasMore || count < bounds.count,
       truncated: count < bounds.count,
     };
+  }
+
+  async resolveDynamic(
+    node: TraceCellData,
+    request: TraceLoadRequest
+  ): Promise<TraceDynamicResult[]> {
+    const row = node.rowIndex;
+    const col = node.columnIndex;
+    const items = await resolveDynamicReferences(
+      node.formula,
+      { sheet: node.worksheetName, row, col },
+      excelDynamicDataProvider()
+    );
+    if (items.length === 0) return [];
+
+    return Excel.run(async (context) => {
+      let remaining = Math.max(0, request.remainingNodes);
+      const planned = items.map((item, index) => {
+        const worksheet = context.workbook.worksheets.getItem(item.sheet);
+        const areas: Array<{ area: (typeof item.areas)[number]; range?: Excel.Range }> = [];
+        let cellsLeft = Math.min(remaining, MAX_DYNAMIC_CELLS);
+        for (const area of item.areas) {
+          const count = (area.r2 - area.r1 + 1) * (area.c2 - area.c1 + 1);
+          const small = count <= request.policy.rangeSummaryThreshold && cellsLeft > 0;
+          if (small) {
+            const range = worksheet.getRangeByIndexes(
+              area.r1,
+              area.c1,
+              area.r2 - area.r1 + 1,
+              area.c2 - area.c1 + 1
+            );
+            range.load(["values", "formulas"]);
+            areas.push({ area, range });
+            cellsLeft -= count;
+          } else {
+            areas.push({ area });
+          }
+        }
+        return { item, index, areas };
+      });
+      await context.sync();
+
+      return planned.map(({ item, index, areas }): TraceDynamicResult => {
+        const children: TraceNodeData[] = [];
+        for (const { area, range } of areas) {
+          if (remaining <= 0) break;
+          const materialized = materializeTraceArea(
+            {
+              worksheetName: item.sheet,
+              address: `${quoteSheet(item.sheet)}!${rectA1(area)}`,
+              rowIndex: area.r1,
+              columnIndex: area.c1,
+              rowCount: area.r2 - area.r1 + 1,
+              columnCount: area.c2 - area.c1 + 1,
+              values: range ? (range.values as unknown[][]) : undefined,
+              formulas: range ? (range.formulas as unknown[][]) : undefined,
+            },
+            request.policy,
+            remaining
+          );
+          children.push(...materialized.nodes);
+          remaining -= materialized.nodes.length;
+        }
+        // Multi-area selection addresses are capped (~255 chars) by Excel;
+        // keep as many areas as fit so selecting the node never fails.
+        let fitting = item.areas.length;
+        while (fitting > 1 && areasAddress(item.sheet, item.areas.slice(0, fitting)).length > 250) {
+          fitting -= 1;
+        }
+        const address = areasAddress(item.sheet, item.areas.slice(0, fitting));
+        const first = children[0];
+        const value =
+          item.kind === "filter"
+            ? `${item.cellCount} de ${item.candidateCount ?? item.cellCount} células`
+            : item.cellCount === 1 && first?.kind === "cell"
+              ? first.value
+              : `${item.cellCount} células`;
+        return {
+          data: {
+            kind: "dynamic",
+            key: `${node.key}::dyn:${index}`,
+            dynamicKind: item.kind,
+            functionName: item.functionName,
+            label: item.label,
+            worksheetName: item.sheet,
+            address,
+            value,
+            formula: "",
+          },
+          children,
+        };
+      });
+    });
+  }
+
+  private rootMark: { sheet: string; row: number; col: number; original: OriginalFill } | null =
+    null;
+
+  async highlightRoot(node: TraceCellData): Promise<void> {
+    await Excel.run(async (context) => {
+      const cell = context.workbook.worksheets
+        .getItem(node.worksheetName)
+        .getRangeByIndexes(node.rowIndex, node.columnIndex, 1, 1);
+      const props = cell.getCellProperties({
+        format: { fill: { color: true, pattern: true, patternColor: true } },
+      });
+      await context.sync();
+      const fill = props.value[0]?.[0]?.format?.fill;
+      this.rootMark = {
+        sheet: node.worksheetName,
+        row: node.rowIndex,
+        col: node.columnIndex,
+        original: {
+          color: fill?.color ?? null,
+          pattern: (fill?.pattern as string | undefined) ?? null,
+          patternColor: fill?.patternColor ?? null,
+        },
+      };
+      // Pattern before colour, or the fill may not render (CLAUDE.md).
+      cell.format.fill.pattern = "Solid";
+      cell.format.fill.color = ROOT_MARK_COLOR;
+      await context.sync();
+    });
+  }
+
+  async clearRootHighlight(): Promise<void> {
+    const mark = this.rootMark;
+    if (!mark) return;
+    this.rootMark = null;
+    await Excel.run(async (context) => {
+      const cell = context.workbook.worksheets
+        .getItem(mark.sheet)
+        .getRangeByIndexes(mark.row, mark.col, 1, 1);
+      const props = cell.getCellProperties({ format: { fill: { color: true } } });
+      await context.sync();
+      // Leave it alone if the user recoloured the cell meanwhile.
+      if (
+        !isStillPainted(
+          { color: props.value[0]?.[0]?.format?.fill?.color ?? null },
+          ROOT_MARK_COLOR
+        )
+      )
+        return;
+      const plan = planRestoreFill(mark.original);
+      if (plan.kind === "clear") {
+        cell.format.fill.clear();
+      } else {
+        cell.format.fill.pattern = plan.fill.pattern as Excel.FillPattern;
+        cell.format.fill.color = plan.fill.color;
+        if (plan.fill.patternColor) cell.format.fill.patternColor = plan.fill.patternColor;
+      }
+      await context.sync();
+    });
   }
 
   async select(target: TraceTarget): Promise<void> {

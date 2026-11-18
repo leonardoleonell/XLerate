@@ -2,6 +2,8 @@ import type { TracePort } from "../adapters/tracePort";
 import type {
   TraceCellData,
   TraceCellNode,
+  TraceDynamicNode,
+  TraceDynamicResult,
   TraceNode,
   TraceNodeData,
   TraceNodeLoadState,
@@ -12,6 +14,7 @@ import type {
 } from "../core/traceGraph";
 import type { TraceLoadingPolicy } from "../core/tracePolicy";
 import { shouldPrefetchTraceNodes } from "../core/tracePolicy";
+import { hasDynamicFunctions } from "../core/traceDynamic";
 import type { TraceDirection } from "../core/traceUtils";
 
 export type TraceExpansionResult = {
@@ -50,6 +53,8 @@ export class TraceSessionService {
   private readonly childCache = new Map<string, TraceExpansionResult>();
   private readonly pageCache = new Map<string, TraceRangePageLoadResult>();
   private readonly inFlight = new Map<string, Promise<TraceExpansionResult>>();
+  private readonly dynamicChildren = new Map<string, TraceNodeData[]>();
+  private rootHighlighted = false;
   private rootTarget: TraceTarget | null = null;
   private referenceSequence = 0;
   private cancelled = false;
@@ -86,6 +91,15 @@ export class TraceSessionService {
     const rootData = await this.port.getRoot();
     this.assertActive();
     this.rootTarget = { address: rootData.address };
+    try {
+      await this.port.highlightRoot(rootData);
+      this.rootHighlighted = true;
+    } catch {
+      // The marker is cosmetic; never fail the trace over it.
+    }
+    // Closed while we were painting: undo the marker right away.
+    if (this.cancelled) await this.clearRootHighlight();
+    this.assertActive();
     const root = this.placeCanonicalNode(rootData, null, 0) as TraceCellNode;
     const expansion = await this.expand(root.id);
     const updatedRoot = this.nodesById.get(root.id) as TraceCellNode;
@@ -136,14 +150,11 @@ export class TraceSessionService {
     );
     if (remainingNodes === 0) return 0;
 
-    const result = await this.port.getDirectNeighbors(this.toCellData(node), this.direction, {
-      remainingNodes,
-      policy: this.policy,
-    });
+    const result = await this.fetchCellChildren(node, remainingNodes);
     this.assertActive();
     if (result.truncated) return result.nodes.length;
 
-    const children = result.nodes.map((child) => this.placeNode(child, node.id, node.level + 1));
+    const children = this.placeCellChildren(node, result);
     const parentState: TraceNodeLoadState = children.length === 0 ? "leaf" : "loaded";
     this.updateNodeState(nodeId, parentState);
     this.childCache.set(nodeId, {
@@ -209,6 +220,17 @@ export class TraceSessionService {
     this.assertActive();
   }
 
+  /** Put back the root cell's fill. Safe to call after cancel(). */
+  async clearRootHighlight(): Promise<void> {
+    if (!this.rootHighlighted) return;
+    this.rootHighlighted = false;
+    try {
+      await this.port.clearRootHighlight();
+    } catch {
+      // Best effort.
+    }
+  }
+
   async restoreRootSelection(): Promise<void> {
     this.assertActive();
     if (!this.rootTarget) return;
@@ -220,6 +242,22 @@ export class TraceSessionService {
     const node = this.nodesById.get(nodeId);
     if (!node || node.kind === "reference") {
       return this.finishWithoutChildren(nodeId, "leaf", false);
+    }
+    if (node.kind === "dynamic") {
+      const data = this.dynamicChildren.get(nodeId) ?? [];
+      const children = data.map((child) => this.placeNode(child, node.id, node.level + 1));
+      const parentState: TraceNodeLoadState = children.length === 0 ? "leaf" : "loaded";
+      this.updateNodeState(nodeId, parentState);
+      const out: TraceExpansionResult = {
+        parentId: nodeId,
+        parentState,
+        children,
+        truncated: false,
+        cached: false,
+        totalNodeCount: this.nodesById.size,
+      };
+      this.childCache.set(nodeId, out);
+      return { ...out, children: [...children] };
     }
     if (node.kind === "range") {
       throw new Error("Range nodes must be expanded through loadRangePage");
@@ -237,13 +275,10 @@ export class TraceSessionService {
     }
 
     this.updateNodeState(nodeId, "loading");
-    const result = await this.port.getDirectNeighbors(this.toCellData(node), this.direction, {
-      remainingNodes,
-      policy: this.policy,
-    });
+    const result = await this.fetchCellChildren(node, remainingNodes);
     this.assertActive();
 
-    const children = result.nodes.map((child) => this.placeNode(child, node.id, node.level + 1));
+    const children = this.placeCellChildren(node, result);
     const parentState: TraceNodeLoadState = children.length === 0 ? "leaf" : "loaded";
     this.updateNodeState(nodeId, parentState);
     const out: TraceExpansionResult = {
@@ -256,6 +291,48 @@ export class TraceSessionService {
     };
     this.childCache.set(nodeId, out);
     return { ...out, children: [...children] };
+  }
+
+  /** Excel's direct precedents/dependents plus resolved dynamic references. */
+  private async fetchCellChildren(
+    node: TraceCellNode,
+    remainingNodes: number
+  ): Promise<{ nodes: TraceNodeData[]; dynamic: TraceDynamicResult[]; truncated: boolean }> {
+    const request = { remainingNodes, policy: this.policy };
+    const cell = this.toCellData(node);
+    const result = await this.port.getDirectNeighbors(cell, this.direction, request);
+    let dynamic: TraceDynamicResult[] = [];
+    if (this.direction === "precedents" && hasDynamicFunctions(node.formula)) {
+      this.assertActive();
+      try {
+        dynamic = await this.port.resolveDynamic(cell, request);
+      } catch {
+        // Resolution is an extra; the plain trace still stands.
+        dynamic = [];
+      }
+    }
+    return { nodes: result.nodes, dynamic, truncated: result.truncated };
+  }
+
+  private placeCellChildren(
+    node: TraceCellNode,
+    fetched: { nodes: TraceNodeData[]; dynamic: TraceDynamicResult[] }
+  ): TraceNode[] {
+    const level = node.level + 1;
+    const dynamic = fetched.dynamic.map((item) => {
+      const placed: TraceDynamicNode = {
+        ...item.data,
+        id: item.data.key,
+        parentId: node.id,
+        level,
+        loadState: item.children.length === 0 ? "leaf" : "unloaded",
+      };
+      this.nodesById.set(placed.id, placed);
+      this.dynamicChildren.set(placed.id, item.children);
+      return placed;
+    });
+    const direct = fetched.nodes.map((child) => this.placeNode(child, node.id, level));
+    return [...dynamic, ...direct];
   }
 
   private finishWithoutChildren(

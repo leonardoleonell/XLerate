@@ -75,9 +75,12 @@ function schedulePullFocusToGrid(): void {
 }
 
 function disposeActiveSession(): void {
-  activeSession?.cancel();
+  const session = activeSession;
+  session?.cancel();
   traceScheduler.cancelAll();
   activeSession = null;
+  // Put back the traced cell's colour (pink marker) once the dialog goes.
+  if (session) void session.clearRootHighlight();
 }
 
 function closeActiveDialog(): void {

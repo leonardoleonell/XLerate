@@ -1,6 +1,7 @@
 import type {
   DirectNeighborResult,
   TraceCellData,
+  TraceDynamicResult,
   TraceNodeData,
   TraceRangeData,
   TraceRangePageResult,
@@ -88,5 +89,27 @@ export class TracePortFake implements TracePort {
 
   async select(target: TraceTarget): Promise<void> {
     this.selections.push({ ...target });
+  }
+
+  readonly highlightEvents: string[] = [];
+  private readonly dynamic = new Map<string, TraceDynamicResult[]>();
+
+  setDynamic(key: string, results: TraceDynamicResult[]): void {
+    this.dynamic.set(key, results);
+  }
+
+  async resolveDynamic(node: TraceCellData): Promise<TraceDynamicResult[]> {
+    return (this.dynamic.get(node.key) ?? []).map((item) => ({
+      data: { ...item.data },
+      children: item.children.map((child) => ({ ...child })),
+    }));
+  }
+
+  async highlightRoot(node: TraceCellData): Promise<void> {
+    this.highlightEvents.push(`highlight:${node.key}`);
+  }
+
+  async clearRootHighlight(): Promise<void> {
+    this.highlightEvents.push("clear");
   }
 }

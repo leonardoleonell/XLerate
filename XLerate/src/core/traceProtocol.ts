@@ -76,7 +76,10 @@ function parseRaw(raw: unknown): Record<string, unknown> | null {
 function isTraceNode(value: unknown): value is TraceNode {
   if (!isRecord(value)) return false;
   return (
-    (value.kind === "cell" || value.kind === "range" || value.kind === "reference") &&
+    (value.kind === "cell" ||
+      value.kind === "range" ||
+      value.kind === "reference" ||
+      value.kind === "dynamic") &&
     isNonEmptyString(value.id) &&
     isNonEmptyString(value.key) &&
     isNonEmptyString(value.address) &&

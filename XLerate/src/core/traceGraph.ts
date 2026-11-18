@@ -48,7 +48,35 @@ export type TraceReferenceNode = TraceNodePlacement & {
   formula: string;
 };
 
-export type TraceNode = TraceCellNode | TraceRangeNode | TraceReferenceNode;
+/**
+ * A dynamic reference resolved from the parent's formula: OFFSET/INDEX/
+ * INDIRECT/lookups (the cell actually used) or a SUMIF-style filter (the
+ * cells that pass the criteria). `address` may hold several areas.
+ */
+export type TraceDynamicData = {
+  kind: "dynamic";
+  key: string;
+  dynamicKind: "reference" | "filter";
+  functionName: string;
+  /** Source text of the call, e.g. OFFSET(I$140,0,-1). */
+  label: string;
+  worksheetName: string;
+  /** Sheet-qualified target, e.g. Calcs!H140 or Calcs!I17,I19,I21. */
+  address: string;
+  /** Short summary shown in the value column. */
+  value: string;
+  formula: string;
+};
+
+export type TraceDynamicResult = {
+  data: TraceDynamicData;
+  /** Resolved cells (or a summarized range) shown when the node expands. */
+  children: TraceNodeData[];
+};
+
+export type TraceDynamicNode = TraceDynamicData & TraceNodePlacement;
+
+export type TraceNode = TraceCellNode | TraceRangeNode | TraceReferenceNode | TraceDynamicNode;
 
 export type TraceAddressTarget = {
   kind?: "address";

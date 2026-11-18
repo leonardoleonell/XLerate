@@ -118,6 +118,17 @@ function appendFormulaContent(
     formulaCell.textContent = "Range summary";
     return;
   }
+  if (node.kind === "dynamic") {
+    const target = document.createElement("span");
+    target.className = "trace-dynamic-target";
+    target.textContent = `→ ${node.address}`;
+    target.title =
+      node.dynamicKind === "filter"
+        ? `Células que passam no critério de ${node.functionName}`
+        : `Célula usada de fato por ${node.functionName}`;
+    formulaCell.appendChild(target);
+    return;
+  }
 
   const segments = tokenizeFormulaReferences(node.formula, node.worksheetName);
   segments.forEach((segment, index) => {
@@ -175,7 +186,7 @@ function renderTraceBreadcrumb(contextNodeId: string): void {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "trace-breadcrumb-button";
-    button.textContent = node.address;
+    button.textContent = node.kind === "dynamic" ? node.functionName : node.address;
     button.title = `Go to ${node.address}`;
     const isCurrent = node.id === contextNodeId;
     if (isCurrent) {
@@ -187,6 +198,25 @@ function renderTraceBreadcrumb(contextNodeId: string): void {
     stopRowKeyboardForButton(button);
     container.appendChild(button);
   });
+}
+
+/** Reference segments that sit inside a dynamic call's text (e.g. OFFSET(...)). */
+function segmentsInsideCall(
+  segments: ReturnType<typeof tokenizeFormulaReferences>,
+  formula: string,
+  label: string
+): Set<number> {
+  const callText = label.endsWith("…") ? label.slice(0, -1) : label;
+  const start = formula.indexOf(callText);
+  const out = new Set<number>();
+  if (start < 0) return out;
+  const end = start + (label.endsWith("…") ? formula.length : callText.length);
+  let offset = 0;
+  segments.forEach((segment, index) => {
+    if (segment.kind === "reference" && offset >= start && offset < end) out.add(index);
+    offset += segment.text.length;
+  });
+  return out;
 }
 
 function renderTraceContext(): void {
@@ -208,10 +238,13 @@ function renderTraceContext(): void {
         context.formulaNode.formula,
         context.formulaNode.worksheetName
       );
+      const relation = context.relationNode;
       appendFormulaContent(
         formula,
         context.formulaNode,
-        getHighlightedFormulaSegmentIndexes(segments, context.relationNode)
+        relation?.kind === "dynamic"
+          ? segmentsInsideCall(segments, context.formulaNode.formula, relation.label)
+          : getHighlightedFormulaSegmentIndexes(segments, relation)
       );
     }
   }
@@ -297,7 +330,13 @@ function createTreeRow(node: TraceNode): HTMLTableRowElement {
   indent.style.setProperty("--indent-level", String(node.level));
   const addressText = document.createElement("span");
   addressText.className = "trace-address-text";
-  addressText.textContent = node.address;
+  if (node.kind === "dynamic") {
+    addressText.classList.add("trace-dynamic-label");
+    addressText.textContent = node.label;
+    addressText.title = node.label;
+  } else {
+    addressText.textContent = node.address;
+  }
   addressCell.append(indent, createChevron(node), addressText);
 
   const valueCell = document.createElement("td");
