@@ -99,56 +99,109 @@ try {
   // Office not present (tests).
 }
 
-/**
- * Arrow keys only come back after the trace when the pane is on screen
- * (confirmed by the user, 2026-11-18): from a hidden pane Excel refuses
- * workbook.focus(). So the trace always shows the pane while it runs, and
- * if the pane was closed before, closes it again once focus is back on the
- * grid (after the last focus pull).
- */
-let paneOpenedForTrace = false;
-const HIDE_PANE_AFTER_CLOSE_MS = 2300;
-
-async function ensurePaneVisibleForTrace(): Promise<void> {
-  const wasHidden = !paneVisible;
-  try {
-    await Office.addin.showAsTaskpane();
-    if (wasHidden) paneOpenedForTrace = true;
-  } catch (error) {
-    logFocus("showAsTaskpane failed", { error: String(error) });
-  }
-}
-
-function scheduleHidePaneAfterTrace(): void {
-  if (!paneOpenedForTrace) return;
-  setTimeout(() => {
-    // A new trace opened meanwhile: let that one close the pane later.
-    if (activeDialog !== null || !paneOpenedForTrace) return;
-    paneOpenedForTrace = false;
-    void Office.addin
-      .hide()
-      .catch((error: unknown) => logFocus("hide failed", { error: String(error) }));
-  }, HIDE_PANE_AFTER_CLOSE_MS);
-}
-
 // The host returns focus to the add-in webview some time after the dialog
-// window closes, and that can land after a single early pull. Releasing the
-// webview's own focus and pulling again later keeps arrow keys on the grid.
+// window closes, and that can land after a single early pull, so pull again
+// later. (These pulls succeed when the pane is on screen.)
 const FOCUS_PULL_DELAYS_MS = [50, 250, 600, 1200, 2000];
 
 function schedulePullFocusToGrid(): void {
   for (const delay of FOCUS_PULL_DELAYS_MS) {
     setTimeout(() => {
       if (activeDialog !== null) return;
-      try {
-        (document.activeElement as HTMLElement | null)?.blur();
-        window.blur();
-      } catch {
-        // Best effort only.
-      }
       void pullFocusToGrid(`pull+${delay}ms`);
     }, delay);
   }
+}
+
+/**
+ * Key rescue. With the pane closed, the keyboard lands in the hidden pane
+ * after the trace dialog closes and Excel refuses workbook.focus() from
+ * there (user-confirmed, 2026-11-18). The keys still reach this document,
+ * so after a trace we act on them ourselves: arrows/Enter/Tab move the
+ * selection like the grid would, and each key retries workbook.focus().
+ * Rescue ends when the pane loses focus (the grid has it again) or the
+ * user starts typing in one of the pane's own fields.
+ */
+let keyRescueArmed = false;
+let keyRescueQueue: Promise<void> = Promise.resolve();
+
+type Move = { rows: number; cols: number; edge?: Excel.KeyboardDirection };
+
+function moveForKey(event: KeyboardEvent): Move | null {
+  const ctrl = event.ctrlKey;
+  switch (event.key) {
+    case "ArrowDown":
+      return ctrl ? { rows: 0, cols: 0, edge: Excel.KeyboardDirection.down } : { rows: 1, cols: 0 };
+    case "ArrowUp":
+      return ctrl ? { rows: 0, cols: 0, edge: Excel.KeyboardDirection.up } : { rows: -1, cols: 0 };
+    case "ArrowRight":
+      return ctrl
+        ? { rows: 0, cols: 0, edge: Excel.KeyboardDirection.right }
+        : { rows: 0, cols: 1 };
+    case "ArrowLeft":
+      return ctrl
+        ? { rows: 0, cols: 0, edge: Excel.KeyboardDirection.left }
+        : { rows: 0, cols: -1 };
+    case "Enter":
+      return { rows: event.shiftKey ? -1 : 1, cols: 0 };
+    case "Tab":
+      return { rows: 0, cols: event.shiftKey ? -1 : 1 };
+    default:
+      return null;
+  }
+}
+
+async function rescueKey(move: Move | null): Promise<void> {
+  const result: Record<string, unknown> = {};
+  if (move) {
+    try {
+      await Excel.run(async (context) => {
+        const cell = context.workbook.getActiveCell();
+        if (move.edge) {
+          context.workbook.getSelectedRange().getRangeEdge(move.edge, cell).select();
+        } else {
+          cell.load(["rowIndex", "columnIndex"]);
+          await context.sync();
+          const row = Math.min(1048575, Math.max(0, cell.rowIndex + move.rows));
+          const col = Math.min(16383, Math.max(0, cell.columnIndex + move.cols));
+          cell.getOffsetRange(row - cell.rowIndex, col - cell.columnIndex).select();
+        }
+        await context.sync();
+      });
+      result.move = "ok";
+    } catch (error) {
+      result.move = String(error);
+    }
+  }
+  await pullFocusToGrid("key rescue");
+  logFocus("key rescue", result);
+}
+
+function handleRescueKeydown(event: KeyboardEvent): void {
+  if (!keyRescueArmed || activeDialog !== null) return;
+  const target = event.target as HTMLElement | null;
+  if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) {
+    keyRescueArmed = false;
+    return;
+  }
+  if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+  // Shift+arrow (extend selection) is not emulated; just hand focus back.
+  const move = event.shiftKey && event.key.startsWith("Arrow") ? null : moveForKey(event);
+  event.preventDefault();
+  keyRescueQueue = keyRescueQueue.then(() => rescueKey(move)).catch(() => undefined);
+}
+
+try {
+  document.addEventListener("keydown", handleRescueKeydown, true);
+  // A click inside the pane means the user is working in the pane itself.
+  document.addEventListener("mousedown", () => (keyRescueArmed = false), true);
+  // Losing focus means the grid (or another window) has the keyboard again.
+  window.addEventListener("blur", () => {
+    if (keyRescueArmed) logFocus("key rescue off (pane lost focus)");
+    keyRescueArmed = false;
+  });
+} catch {
+  // No DOM (tests).
 }
 
 function disposeActiveSession(): void {
@@ -178,9 +231,9 @@ function closeActiveDialog(options: { focusGridFirst?: boolean } = {}): void {
     } catch {
       // The dialog may already be closing through the host UI.
     }
-    logFocus("dialog closed", { paneVisible, paneOpenedForTrace });
+    keyRescueArmed = true;
+    logFocus("dialog closed", { paneVisible });
     schedulePullFocusToGrid();
-    scheduleHidePaneAfterTrace();
   };
 
   if (!options.focusGridFirst) {
@@ -408,7 +461,6 @@ export async function openTraceDialog(
   options: OpenTraceDialogOptions = {}
 ): Promise<void> {
   closeActiveDialog();
-  await ensurePaneVisibleForTrace();
   const sessionId = `trace-${Date.now()}-${++sessionSequence}`;
   pendingOpen = {
     sessionId,
