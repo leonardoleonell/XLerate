@@ -68,7 +68,9 @@ describe("classifyFormulaMap", () => {
   });
 
   it("flags the odd formula in a row copied across", () => {
-    const grid: FormulaMapCell[][] = [[f("=RC[-1]*2"), f("=RC[-1]*2"), f("=RC[-1]*3"), f("=RC[-1]*2"), f("=RC[-1]*2")]];
+    const grid: FormulaMapCell[][] = [
+      [f("=RC[-1]*2"), f("=RC[-1]*2"), f("=RC[-1]*3"), f("=RC[-1]*2"), f("=RC[-1]*2")],
+    ];
     expect(classifyFormulaMap(grid)[0]).toEqual(["across", "across", "unique", "across", "across"]);
   });
 });
@@ -109,7 +111,9 @@ describe("planRestoreFill", () => {
   });
 
   it("keeps pattern fills with their pattern colour", () => {
-    expect(planRestoreFill({ pattern: "Gray25", color: "#DDEEFF", patternColor: "#000000" })).toEqual({
+    expect(
+      planRestoreFill({ pattern: "Gray25", color: "#DDEEFF", patternColor: "#000000" })
+    ).toEqual({
       kind: "set",
       fill: { pattern: "Gray25", color: "#DDEEFF", patternColor: "#000000" },
     });

@@ -64,7 +64,12 @@ async function forEachChunk(
   const rowsPerChunk = Math.max(1, Math.floor(READ_CHUNK_CELLS / rect.columnCount));
   for (let r = 0; r < rect.rowCount; r += rowsPerChunk) {
     const rows = Math.min(rowsPerChunk, rect.rowCount - r);
-    const range = sheet.getRangeByIndexes(rect.rowIndex + r, rect.columnIndex, rows, rect.columnCount);
+    const range = sheet.getRangeByIndexes(
+      rect.rowIndex + r,
+      rect.columnIndex,
+      rows,
+      rect.columnCount
+    );
     const after = load(range);
     await context.sync();
     after();
@@ -78,7 +83,9 @@ async function readFills(
 ): Promise<OriginalFill[][]> {
   const fills: OriginalFill[][] = [];
   await forEachChunk(context, sheet, rect, (range) => {
-    const props = range.getCellProperties({ format: { fill: { color: true, pattern: true, patternColor: true } } });
+    const props = range.getCellProperties({
+      format: { fill: { color: true, pattern: true, patternColor: true } },
+    });
     return () => {
       for (const row of props.value) {
         fills.push(
@@ -174,7 +181,9 @@ function sameRestore(a: RestoreFill, b: RestoreFill): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "clear" || b.kind === "clear") return true;
   return (
-    a.fill.pattern === b.fill.pattern && a.fill.color === b.fill.color && a.fill.patternColor === b.fill.patternColor
+    a.fill.pattern === b.fill.pattern &&
+    a.fill.color === b.fill.color &&
+    a.fill.patternColor === b.fill.patternColor
   );
 }
 
@@ -209,7 +218,8 @@ async function restoreMap(
       const now = current[run.row - map.rowIndex]?.[c - map.columnIndex];
       const original = map.originals.get(key(run.row, c));
       // A cell the user recoloured while the map was on keeps its new colour.
-      const plan = now && original && isStillPainted(now, run.color) ? planRestoreFill(original) : null;
+      const plan =
+        now && original && isStillPainted(now, run.color) ? planRestoreFill(original) : null;
       if (plan === null) kept += 1;
       else restored += 1;
 

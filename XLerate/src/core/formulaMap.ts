@@ -45,13 +45,16 @@ function stripStringLiterals(formula: string): string {
  * another workbook, another sheet, cells/names on this sheet, or nothing.
  */
 export function classifyFormulaReferences(formulaA1: string): FormulaReferenceKind {
-  const body = stripStringLiterals(formulaA1.startsWith("=") ? formulaA1.slice(1) : formulaA1).replace(
+  const body = stripStringLiterals(
+    formulaA1.startsWith("=") ? formulaA1.slice(1) : formulaA1
+  ).replace(
     /#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A|SPILL!|CALC!|FIELD!|BLOCKED!|CONNECT!|BUSY!|UNKNOWN!|GETTING_DATA)/gi,
     "0"
   );
 
   // [Book.xlsx]Sheet!A1, 'C:\dir\[Book.xlsx]Sheet'!A1 or [1]Sheet!A1.
-  if (/'[^']*\[[^\]]+\][^']*'!|\[[^\]]+\][A-Za-z0-9_.\u00C0-\uFFFF]+!/.test(body)) return "external";
+  if (/'[^']*\[[^\]]+\][^']*'!|\[[^\]]+\][A-Za-z0-9_.\u00C0-\uFFFF]+!/.test(body))
+    return "external";
   // Sheet!A1 or 'My sheet'!A1 (the quoted name may itself contain "!").
   if (/'(?:[^']|'')+'!|[A-Za-z0-9_.\u00C0-\uFFFF]+!/.test(body)) return "sheet";
 
@@ -101,7 +104,8 @@ export function classifyFormulaMap(grid: FormulaMapCell[][]): FormulaMapCategory
       if (cell.kind !== "formula") return "none";
 
       const across = sameFormula(row[c - 1], cell.r1c1) || sameFormula(row[c + 1], cell.r1c1);
-      const down = sameFormula(grid[r - 1]?.[c], cell.r1c1) || sameFormula(grid[r + 1]?.[c], cell.r1c1);
+      const down =
+        sameFormula(grid[r - 1]?.[c], cell.r1c1) || sameFormula(grid[r + 1]?.[c], cell.r1c1);
       if (across && down) return "acrossDown";
       if (across) return "across";
       if (down) return "down";
@@ -151,7 +155,9 @@ export type OriginalFill = {
   patternColor?: string | null;
 };
 
-export type RestoreFill = { kind: "clear" } | { kind: "set"; fill: { pattern: string; color: string; patternColor?: string } };
+export type RestoreFill =
+  | { kind: "clear" }
+  | { kind: "set"; fill: { pattern: string; color: string; patternColor?: string } };
 
 function normColor(color: string | null | undefined): string {
   return (color ?? "").toUpperCase();
@@ -165,7 +171,11 @@ function normColor(color: string | null | undefined): string {
 export function planRestoreFill(original: OriginalFill): RestoreFill {
   const pattern = original.pattern ?? null;
   const color = normColor(original.color);
-  if (pattern === "None" || color === "" || ((pattern === null || pattern === "Solid") && color === "#FFFFFF")) {
+  if (
+    pattern === "None" ||
+    color === "" ||
+    ((pattern === null || pattern === "Solid") && color === "#FFFFFF")
+  ) {
     return { kind: "clear" };
   }
   const fill: { pattern: string; color: string; patternColor?: string } = {
