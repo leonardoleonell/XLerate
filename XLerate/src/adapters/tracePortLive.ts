@@ -25,7 +25,6 @@ import {
   type TraceDirection,
 } from "../core/traceUtils";
 import type { TraceLoadRequest, TracePort } from "./tracePort";
-import { isStillPainted, planRestoreFill, type OriginalFill } from "../core/formulaMap";
 import {
   quoteSheet,
   rectA1,
@@ -40,7 +39,6 @@ import {
   type DynamicDataProvider,
 } from "../core/traceDynamic";
 
-const ROOT_MARK_COLOR = "#FF99FF";
 const MAX_DYNAMIC_CELLS = 500;
 
 /** Reads what the dynamic-reference resolver asks for, one sync per batch. */
@@ -512,66 +510,6 @@ export class TracePortLive implements TracePort {
           children,
         };
       });
-    });
-  }
-
-  private rootMark: { sheet: string; row: number; col: number; original: OriginalFill } | null =
-    null;
-
-  async highlightRoot(node: TraceCellData): Promise<void> {
-    await Excel.run(async (context) => {
-      const cell = context.workbook.worksheets
-        .getItem(node.worksheetName)
-        .getRangeByIndexes(node.rowIndex, node.columnIndex, 1, 1);
-      const props = cell.getCellProperties({
-        format: { fill: { color: true, pattern: true, patternColor: true } },
-      });
-      await context.sync();
-      const fill = props.value[0]?.[0]?.format?.fill;
-      this.rootMark = {
-        sheet: node.worksheetName,
-        row: node.rowIndex,
-        col: node.columnIndex,
-        original: {
-          color: fill?.color ?? null,
-          pattern: (fill?.pattern as string | undefined) ?? null,
-          patternColor: fill?.patternColor ?? null,
-        },
-      };
-      // Pattern before colour, or the fill may not render (CLAUDE.md).
-      cell.format.fill.pattern = "Solid";
-      cell.format.fill.color = ROOT_MARK_COLOR;
-      await context.sync();
-    });
-  }
-
-  async clearRootHighlight(): Promise<void> {
-    const mark = this.rootMark;
-    if (!mark) return;
-    this.rootMark = null;
-    await Excel.run(async (context) => {
-      const cell = context.workbook.worksheets
-        .getItem(mark.sheet)
-        .getRangeByIndexes(mark.row, mark.col, 1, 1);
-      const props = cell.getCellProperties({ format: { fill: { color: true } } });
-      await context.sync();
-      // Leave it alone if the user recoloured the cell meanwhile.
-      if (
-        !isStillPainted(
-          { color: props.value[0]?.[0]?.format?.fill?.color ?? null },
-          ROOT_MARK_COLOR
-        )
-      )
-        return;
-      const plan = planRestoreFill(mark.original);
-      if (plan.kind === "clear") {
-        cell.format.fill.clear();
-      } else {
-        cell.format.fill.pattern = plan.fill.pattern as Excel.FillPattern;
-        cell.format.fill.color = plan.fill.color;
-        if (plan.fill.patternColor) cell.format.fill.patternColor = plan.fill.patternColor;
-      }
-      await context.sync();
     });
   }
 

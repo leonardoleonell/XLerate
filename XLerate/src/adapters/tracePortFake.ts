@@ -91,7 +91,6 @@ export class TracePortFake implements TracePort {
     this.selections.push({ ...target });
   }
 
-  readonly highlightEvents: string[] = [];
   private readonly dynamic = new Map<string, TraceDynamicResult[]>();
 
   setDynamic(key: string, results: TraceDynamicResult[]): void {
@@ -103,13 +102,5 @@ export class TracePortFake implements TracePort {
       data: { ...item.data },
       children: item.children.map((child) => ({ ...child })),
     }));
-  }
-
-  async highlightRoot(node: TraceCellData): Promise<void> {
-    this.highlightEvents.push(`highlight:${node.key}`);
-  }
-
-  async clearRootHighlight(): Promise<void> {
-    this.highlightEvents.push("clear");
   }
 }

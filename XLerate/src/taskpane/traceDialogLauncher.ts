@@ -59,17 +59,6 @@ async function pullFocusToGrid(): Promise<void> {
 // webview's own focus and pulling again later keeps arrow keys on the grid.
 const FOCUS_PULL_DELAYS_MS = [50, 250, 600, 1200, 2000];
 
-/**
- * Restore the traced cell's colour first, then pull focus back to the grid.
- * Excel runs add-in calls one at a time, so restoring the colour alongside
- * the focus pulls could push them past the moment the host hands focus
- * back to the add-in webview, leaving arrow keys stuck on the last cell.
- */
-function finishCloseAndPullFocus(session: TraceSessionService | null): void {
-  const restored = session ? session.clearRootHighlight() : Promise.resolve();
-  void restored.catch(() => undefined).then(() => schedulePullFocusToGrid());
-}
-
 function schedulePullFocusToGrid(): void {
   for (const delay of FOCUS_PULL_DELAYS_MS) {
     setTimeout(() => {
@@ -85,17 +74,14 @@ function schedulePullFocusToGrid(): void {
   }
 }
 
-/** Cancel the session; returns it so the caller can restore its marker. */
-function disposeActiveSession(): TraceSessionService | null {
-  const session = activeSession;
-  session?.cancel();
+function disposeActiveSession(): void {
+  activeSession?.cancel();
   traceScheduler.cancelAll();
   activeSession = null;
-  return session;
 }
 
 function closeActiveDialog(): void {
-  const session = disposeActiveSession();
+  disposeActiveSession();
   pendingOpen = null;
   if (activeDialog) {
     try {
@@ -105,9 +91,7 @@ function closeActiveDialog(): void {
     }
     activeDialog = null;
     activeDialogSessionId = null;
-    finishCloseAndPullFocus(session);
-  } else if (session) {
-    void session.clearRootHighlight();
+    schedulePullFocusToGrid();
   }
 }
 
@@ -361,11 +345,11 @@ export async function openTraceDialog(
         );
         dialog.addEventHandler(Office.EventType.DialogEventReceived, () => {
           if (!isCurrentSession(dialog, sessionId)) return;
-          const session = disposeActiveSession();
+          disposeActiveSession();
           pendingOpen = null;
           activeDialog = null;
           activeDialogSessionId = null;
-          finishCloseAndPullFocus(session);
+          schedulePullFocusToGrid();
         });
         resolve();
       }

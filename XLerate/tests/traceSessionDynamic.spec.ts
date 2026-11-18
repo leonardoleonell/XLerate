@@ -69,15 +69,6 @@ describe("trace session with dynamic references", () => {
     expect(opened.children.every((n) => n.kind !== "dynamic")).toBe(true);
   });
 
-  it("marks the root while open and clears it once", async () => {
-    const { port, service } = setup();
-    await service.open();
-    service.cancel();
-    await service.clearRootHighlight();
-    await service.clearRootHighlight();
-    expect(port.highlightEvents).toEqual(["highlight:root", "clear"]);
-  });
-
   it("dynamic nodes survive the parent-to-dialog message check", async () => {
     const { service } = setup();
     const opened = await service.open();

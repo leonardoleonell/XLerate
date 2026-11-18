@@ -54,7 +54,6 @@ export class TraceSessionService {
   private readonly pageCache = new Map<string, TraceRangePageLoadResult>();
   private readonly inFlight = new Map<string, Promise<TraceExpansionResult>>();
   private readonly dynamicChildren = new Map<string, TraceNodeData[]>();
-  private rootHighlighted = false;
   private rootTarget: TraceTarget | null = null;
   private referenceSequence = 0;
   private cancelled = false;
@@ -91,15 +90,6 @@ export class TraceSessionService {
     const rootData = await this.port.getRoot();
     this.assertActive();
     this.rootTarget = { address: rootData.address };
-    try {
-      await this.port.highlightRoot(rootData);
-      this.rootHighlighted = true;
-    } catch {
-      // The marker is cosmetic; never fail the trace over it.
-    }
-    // Closed while we were painting: undo the marker right away.
-    if (this.cancelled) await this.clearRootHighlight();
-    this.assertActive();
     const root = this.placeCanonicalNode(rootData, null, 0) as TraceCellNode;
     const expansion = await this.expand(root.id);
     const updatedRoot = this.nodesById.get(root.id) as TraceCellNode;
@@ -218,17 +208,6 @@ export class TraceSessionService {
     this.assertActive();
     await this.port.select(target);
     this.assertActive();
-  }
-
-  /** Put back the root cell's fill. Safe to call after cancel(). */
-  async clearRootHighlight(): Promise<void> {
-    if (!this.rootHighlighted) return;
-    this.rootHighlighted = false;
-    try {
-      await this.port.clearRootHighlight();
-    } catch {
-      // Best effort.
-    }
   }
 
   async restoreRootSelection(): Promise<void> {
