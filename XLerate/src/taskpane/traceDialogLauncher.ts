@@ -99,28 +99,36 @@ try {
   // Office not present (tests).
 }
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
 /**
- * With the pane hidden, hiding it again makes the host move focus off the
- * invisible webview. If the pane still holds focus, show and hide it once
- * (a brief flash) as a last resort.
+ * Arrow keys only come back after the trace when the pane is on screen
+ * (confirmed by the user, 2026-11-18): from a hidden pane Excel refuses
+ * workbook.focus(). So the trace always shows the pane while it runs, and
+ * if the pane was closed before, closes it again once focus is back on the
+ * grid (after the last focus pull).
  */
-async function releaseFocusFromHiddenPane(): Promise<void> {
-  if (paneVisible) return;
+let paneOpenedForTrace = false;
+const HIDE_PANE_AFTER_CLOSE_MS = 2300;
+
+async function ensurePaneVisibleForTrace(): Promise<void> {
+  const wasHidden = !paneVisible;
   try {
-    await Office.addin.hide();
-    await sleep(100);
-    logFocus("hidden pane: hide()");
-    if (document.hasFocus()) {
-      await Office.addin.showAsTaskpane();
-      await Office.addin.hide();
-      await sleep(100);
-      logFocus("hidden pane: show()+hide()");
-    }
+    await Office.addin.showAsTaskpane();
+    if (wasHidden) paneOpenedForTrace = true;
   } catch (error) {
-    logFocus("hidden pane: failed", { error: String(error) });
+    logFocus("showAsTaskpane failed", { error: String(error) });
   }
+}
+
+function scheduleHidePaneAfterTrace(): void {
+  if (!paneOpenedForTrace) return;
+  setTimeout(() => {
+    // A new trace opened meanwhile: let that one close the pane later.
+    if (activeDialog !== null || !paneOpenedForTrace) return;
+    paneOpenedForTrace = false;
+    void Office.addin
+      .hide()
+      .catch((error: unknown) => logFocus("hide failed", { error: String(error) }));
+  }, HIDE_PANE_AFTER_CLOSE_MS);
 }
 
 // The host returns focus to the add-in webview some time after the dialog
@@ -170,10 +178,9 @@ function closeActiveDialog(options: { focusGridFirst?: boolean } = {}): void {
     } catch {
       // The dialog may already be closing through the host UI.
     }
-    logFocus("dialog closed", { paneVisible });
-    void sleep(50)
-      .then(releaseFocusFromHiddenPane)
-      .finally(() => schedulePullFocusToGrid());
+    logFocus("dialog closed", { paneVisible, paneOpenedForTrace });
+    schedulePullFocusToGrid();
+    scheduleHidePaneAfterTrace();
   };
 
   if (!options.focusGridFirst) {
@@ -401,6 +408,7 @@ export async function openTraceDialog(
   options: OpenTraceDialogOptions = {}
 ): Promise<void> {
   closeActiveDialog();
+  await ensurePaneVisibleForTrace();
   const sessionId = `trace-${Date.now()}-${++sessionSequence}`;
   pendingOpen = {
     sessionId,
