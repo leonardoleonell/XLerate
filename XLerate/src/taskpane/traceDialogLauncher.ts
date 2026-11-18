@@ -79,6 +79,50 @@ async function pullFocusToGrid(step: string): Promise<void> {
   logFocus(step, result);
 }
 
+// Whether the XLerate pane is on screen. The runtime keeps running when the
+// user closes the pane (shortcuts still work), but after a dialog closes
+// the host hands keyboard focus to that hidden pane and refuses
+// workbook.focus() from it, leaving arrow keys dead until a mouse click.
+let paneVisible = true;
+try {
+  Office.onReady(() => {
+    try {
+      void Office.addin.onVisibilityModeChanged((args) => {
+        paneVisible = args.visibilityMode === Office.VisibilityMode.taskpane;
+        logFocus("pane visibility", { paneVisible });
+      });
+    } catch {
+      // Older hosts: assume visible, the normal pulls still run.
+    }
+  });
+} catch {
+  // Office not present (tests).
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * With the pane hidden, hiding it again makes the host move focus off the
+ * invisible webview. If the pane still holds focus, show and hide it once
+ * (a brief flash) as a last resort.
+ */
+async function releaseFocusFromHiddenPane(): Promise<void> {
+  if (paneVisible) return;
+  try {
+    await Office.addin.hide();
+    await sleep(100);
+    logFocus("hidden pane: hide()");
+    if (document.hasFocus()) {
+      await Office.addin.showAsTaskpane();
+      await Office.addin.hide();
+      await sleep(100);
+      logFocus("hidden pane: show()+hide()");
+    }
+  } catch (error) {
+    logFocus("hidden pane: failed", { error: String(error) });
+  }
+}
+
 // The host returns focus to the add-in webview some time after the dialog
 // window closes, and that can land after a single early pull. Releasing the
 // webview's own focus and pulling again later keeps arrow keys on the grid.
@@ -126,8 +170,10 @@ function closeActiveDialog(options: { focusGridFirst?: boolean } = {}): void {
     } catch {
       // The dialog may already be closing through the host UI.
     }
-    logFocus("dialog closed");
-    schedulePullFocusToGrid();
+    logFocus("dialog closed", { paneVisible });
+    void sleep(50)
+      .then(releaseFocusFromHiddenPane)
+      .finally(() => schedulePullFocusToGrid());
   };
 
   if (!options.focusGridFirst) {
