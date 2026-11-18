@@ -57,7 +57,18 @@ async function pullFocusToGrid(): Promise<void> {
 // The host returns focus to the add-in webview some time after the dialog
 // window closes, and that can land after a single early pull. Releasing the
 // webview's own focus and pulling again later keeps arrow keys on the grid.
-const FOCUS_PULL_DELAYS_MS = [50, 250, 600];
+const FOCUS_PULL_DELAYS_MS = [50, 250, 600, 1200, 2000];
+
+/**
+ * Restore the traced cell's colour first, then pull focus back to the grid.
+ * Excel runs add-in calls one at a time, so restoring the colour alongside
+ * the focus pulls could push them past the moment the host hands focus
+ * back to the add-in webview, leaving arrow keys stuck on the last cell.
+ */
+function finishCloseAndPullFocus(session: TraceSessionService | null): void {
+  const restored = session ? session.clearRootHighlight() : Promise.resolve();
+  void restored.catch(() => undefined).then(() => schedulePullFocusToGrid());
+}
 
 function schedulePullFocusToGrid(): void {
   for (const delay of FOCUS_PULL_DELAYS_MS) {
@@ -74,17 +85,17 @@ function schedulePullFocusToGrid(): void {
   }
 }
 
-function disposeActiveSession(): void {
+/** Cancel the session; returns it so the caller can restore its marker. */
+function disposeActiveSession(): TraceSessionService | null {
   const session = activeSession;
   session?.cancel();
   traceScheduler.cancelAll();
   activeSession = null;
-  // Put back the traced cell's colour (pink marker) once the dialog goes.
-  if (session) void session.clearRootHighlight();
+  return session;
 }
 
 function closeActiveDialog(): void {
-  disposeActiveSession();
+  const session = disposeActiveSession();
   pendingOpen = null;
   if (activeDialog) {
     try {
@@ -94,7 +105,9 @@ function closeActiveDialog(): void {
     }
     activeDialog = null;
     activeDialogSessionId = null;
-    schedulePullFocusToGrid();
+    finishCloseAndPullFocus(session);
+  } else if (session) {
+    void session.clearRootHighlight();
   }
 }
 
@@ -348,11 +361,11 @@ export async function openTraceDialog(
         );
         dialog.addEventHandler(Office.EventType.DialogEventReceived, () => {
           if (!isCurrentSession(dialog, sessionId)) return;
-          disposeActiveSession();
+          const session = disposeActiveSession();
           pendingOpen = null;
           activeDialog = null;
           activeDialogSessionId = null;
-          schedulePullFocusToGrid();
+          finishCloseAndPullFocus(session);
         });
         resolve();
       }
